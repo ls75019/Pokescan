@@ -3,6 +3,7 @@ import pokemon from 'pokemontcgsdk';
 import ImageUpload from './components/ImageUpload';
 import CardSearch from './components/CardSearch';
 import CardDisplay from './components/CardDisplay';
+import { recognizeText, extractPokemonNames } from './services/ocrService';
 import './App.css';
 
 // Configuration de l'API (vous pouvez ajouter votre clé API ici si vous en avez une)
@@ -13,6 +14,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [currentImage, setCurrentImage] = useState(null);
   const [mode, setMode] = useState('search'); // 'search' ou 'image'
+  const [ocrProgress, setOcrProgress] = useState(null);
+  const [detectedText, setDetectedText] = useState('');
 
   const searchCardsByName = async (searchTerm) => {
     setLoading(true);
@@ -41,23 +44,74 @@ function App() {
 
   const handleImageCapture = async (imageFile, imageUrl) => {
     setCurrentImage(imageUrl);
+    setDetectedText('');
+    setCards([]);
 
-    if (imageFile) {
-      // Pour une vraie reconnaissance d'image, il faudrait :
-      // 1. Utiliser OCR (Tesseract.js) pour extraire le texte de l'image
-      // 2. Ou utiliser une API de reconnaissance d'image
-      // 3. Ou utiliser un modèle ML pour reconnaître la carte
+    if (!imageFile) {
+      setOcrProgress(null);
+      return;
+    }
 
-      // Pour cette démo, on va simplement afficher un message
-      setCards([]);
-      alert(
-        "📸 Image capturée!\n\n" +
-        "Pour une vraie reconnaissance d'image, vous pouvez:\n" +
-        "1. Utiliser le mode recherche pour chercher manuellement\n" +
-        "2. Intégrer une API de reconnaissance d'image\n" +
-        "3. Utiliser Tesseract.js pour l'OCR\n\n" +
-        "Utilisez le mode recherche pour trouver votre carte!"
-      );
+    try {
+      setLoading(true);
+      setOcrProgress({ status: 'Initialisation de la reconnaissance...', progress: 0 });
+
+      // Utiliser le service OCR (Tesseract.js par défaut, Google Vision si configuré)
+      const result = await recognizeText(imageFile, {
+        preferGoogleVision: false, // Mettre à true pour utiliser Google Vision si configuré
+        onProgress: (progress) => {
+          setOcrProgress(progress);
+        }
+      });
+
+      const text = result.text.trim();
+      setDetectedText(text);
+
+      if (!text) {
+        alert('Aucun texte détecté sur l\'image. Essayez avec une image plus claire ou utilisez le mode recherche.');
+        setOcrProgress(null);
+        setLoading(false);
+        return;
+      }
+
+      // Extraire les noms de Pokémon possibles
+      const pokemonNames = extractPokemonNames(text);
+
+      if (pokemonNames.length === 0) {
+        alert(`Texte détecté mais aucun nom de Pokémon identifié.\n\nTexte: "${text.substring(0, 100)}..."\n\nUtilisez le mode recherche pour chercher manuellement.`);
+        setOcrProgress(null);
+        setLoading(false);
+        return;
+      }
+
+      // Chercher le premier nom de Pokémon trouvé
+      const searchName = pokemonNames[0];
+      setOcrProgress({ status: `Recherche de "${searchName}"...`, progress: 100 });
+
+      // Rechercher la carte
+      const searchResult = await pokemon.card.where({
+        q: `name:"${searchName}*"`,
+        pageSize: 20,
+        orderBy: '-set.releaseDate'
+      });
+
+      setCards(searchResult.data);
+
+      if (searchResult.data.length === 0) {
+        const message = pokemonNames.length > 1
+          ? `Aucune carte trouvée pour "${searchName}".\n\nAutres noms détectés: ${pokemonNames.slice(1, 4).join(', ')}\n\nVous pouvez chercher manuellement avec le mode recherche.`
+          : `Aucune carte trouvée pour "${searchName}".\n\nTexte détecté: "${text.substring(0, 100)}..."\n\nUtilisez le mode recherche pour chercher manuellement.`;
+        alert(message);
+      } else {
+        alert(`✅ Reconnaissance réussie!\n\nTexte détecté: "${searchName}"\nCartes trouvées: ${searchResult.data.length}`);
+      }
+
+    } catch (error) {
+      console.error('Erreur OCR:', error);
+      alert(`Erreur lors de la reconnaissance: ${error.message}\n\nUtilisez le mode recherche pour chercher manuellement.`);
+    } finally {
+      setOcrProgress(null);
+      setLoading(false);
     }
   };
 
@@ -118,16 +172,37 @@ function App() {
         ) : (
           <div className="image-section">
             <ImageUpload onImageCapture={handleImageCapture} />
+
+            {ocrProgress && (
+              <div className="ocr-progress">
+                <div className="ocr-status">{ocrProgress.status}</div>
+                <div className="progress-bar">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${ocrProgress.progress}%` }}
+                  ></div>
+                </div>
+                <div className="progress-text">{ocrProgress.progress}%</div>
+              </div>
+            )}
+
+            {detectedText && !loading && (
+              <div className="detected-text">
+                <h3>📝 Texte détecté</h3>
+                <p>{detectedText}</p>
+              </div>
+            )}
+
             <div className="image-info">
               <h3>📋 Comment utiliser la reconnaissance d'image</h3>
               <ol>
-                <li>Prenez une photo de votre carte Pokémon</li>
-                <li>Assurez-vous que la carte est bien visible et centrée</li>
-                <li>Utilisez ensuite la recherche par nom pour retrouver votre carte</li>
+                <li>Prenez une photo claire de votre carte Pokémon</li>
+                <li>Assurez-vous que le nom est bien visible et lisible</li>
+                <li>L'OCR détectera automatiquement le texte et cherchera la carte</li>
               </ol>
               <p className="info-note">
-                💡 <strong>Note:</strong> La reconnaissance automatique nécessiterait une intégration
-                avec une API de reconnaissance d'image ou OCR. En attendant, utilisez le mode recherche!
+                💡 <strong>Note:</strong> Utilise Tesseract.js pour la reconnaissance de texte (gratuit, côté client).
+                Pour une meilleure précision, vous pouvez configurer Google Vision API.
               </p>
             </div>
           </div>

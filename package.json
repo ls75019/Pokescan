@@ -10,10 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google-cloud/vision": "^5.3.4",
     "axios": "^1.13.2",
+    "netlify-cli": "^23.13.0",
     "pokemontcgsdk": "^2.0.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

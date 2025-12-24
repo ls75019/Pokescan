@@ -1,0 +1,40 @@
+# Configuration Netlify pour PokéScan
+
+[build]
+  # Commande de build
+  command = "npm run build"
+
+  # Dossier de publication (sortie de Vite)
+  publish = "dist"
+
+  # Dossier des fonctions serverless
+  functions = "netlify/functions"
+
+# Redirections pour SPA (Single Page Application)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers de sécurité
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Headers pour les assets statiques (cache)
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Configuration de l'environnement de build
+[build.environment]
+  NODE_VERSION = "18"
+
+# Configuration des fonctions
+[functions]
+  node_bundler = "esbuild"
