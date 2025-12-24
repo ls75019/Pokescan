@@ -125,29 +125,72 @@ export const recognizeText = async (imageSource, options = {}) => {
 export const extractPokemonNames = (text) => {
   if (!text) return [];
 
-  // Liste des mots communs à ignorer
+  // Liste des mots communs à ignorer (plus restrictive)
   const commonWords = new Set([
-    'the', 'hp', 'lv', 'basic', 'stage', 'evolution', 'ex', 'gx', 'vmax', 'v',
+    'the', 'and', 'or', 'but', 'for', 'with', 'from', 'this', 'that',
+    'hp', 'lv', 'level', 'basic', 'stage', 'evolution',
     'rare', 'holo', 'reverse', 'common', 'uncommon', 'trainer', 'energy',
-    'put', 'damage', 'attack', 'ability', 'retreat', 'weakness', 'resistance'
+    'put', 'damage', 'attack', 'ability', 'retreat', 'weakness', 'resistance',
+    'card', 'pokemon', 'poké', 'cards', 'tcg', 'game', 'play', 'player',
+    'turn', 'your', 'opponent', 'deck', 'hand', 'discard', 'prize',
+    'bench', 'active', 'knock', 'out', 'knockout', 'draw', 'shuffle',
+    'search', 'look', 'reveal', 'show', 'choose', 'select', 'switch',
+    'heal', 'recover', 'prevent', 'remove', 'place', 'attach', 'detach'
   ]);
 
   // Nettoyer et extraire les mots
   const words = text
-    .toLowerCase()
-    .replace(/[^a-z\s]/gi, ' ')
     .split(/\s+/)
+    .map(word => word.replace(/[^a-zA-Z]/g, '')) // Enlever la ponctuation
     .filter(word =>
-      word.length > 2 &&
-      !commonWords.has(word) &&
-      /^[a-z]/i.test(word)
+      word.length > 2 && // Au moins 3 caractères
+      !commonWords.has(word.toLowerCase()) &&
+      /^[A-Z]/i.test(word) // Commence par une lettre
     );
 
-  // Capitaliser la première lettre
+  // Capitaliser correctement (première lettre en majuscule)
   const capitalizedWords = words.map(word =>
-    word.charAt(0).toUpperCase() + word.slice(1)
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
   );
 
+  // Retourner les mots uniques en gardant l'ordre d'apparition
+  const uniqueWords = [];
+  const seen = new Set();
+
+  for (const word of capitalizedWords) {
+    const lower = word.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      uniqueWords.push(word);
+    }
+  }
+
+  return uniqueWords;
+};
+
+/**
+ * Extraire TOUS les mots détectés (pour debug et sélection manuelle)
+ */
+export const extractAllWords = (text) => {
+  if (!text) return [];
+
+  const words = text
+    .split(/\s+/)
+    .map(word => word.replace(/[^a-zA-Z0-9]/g, ''))
+    .filter(word => word.length > 1)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+
   // Retourner les mots uniques
-  return [...new Set(capitalizedWords)];
+  const uniqueWords = [];
+  const seen = new Set();
+
+  for (const word of words) {
+    const lower = word.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      uniqueWords.push(word);
+    }
+  }
+
+  return uniqueWords;
 };

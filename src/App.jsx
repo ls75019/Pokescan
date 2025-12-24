@@ -3,7 +3,7 @@ import pokemon from 'pokemontcgsdk';
 import ImageUpload from './components/ImageUpload';
 import CardSearch from './components/CardSearch';
 import CardDisplay from './components/CardDisplay';
-import { recognizeText, extractPokemonNames } from './services/ocrService';
+import { recognizeText, extractPokemonNames, extractAllWords } from './services/ocrService';
 import './App.css';
 
 // Configuration de l'API (vous pouvez ajouter votre clé API ici si vous en avez une)
@@ -16,6 +16,7 @@ function App() {
   const [mode, setMode] = useState('search'); // 'search' ou 'image'
   const [ocrProgress, setOcrProgress] = useState(null);
   const [detectedText, setDetectedText] = useState('');
+  const [detectedWords, setDetectedWords] = useState([]);
 
   const searchCardsByName = async (searchTerm) => {
     setLoading(true);
@@ -45,6 +46,7 @@ function App() {
   const handleImageCapture = async (imageFile, imageUrl) => {
     setCurrentImage(imageUrl);
     setDetectedText('');
+    setDetectedWords([]);
     setCards([]);
 
     if (!imageFile) {
@@ -58,7 +60,7 @@ function App() {
 
       // Utiliser le service OCR (Tesseract.js par défaut, Google Vision si configuré)
       const result = await recognizeText(imageFile, {
-        preferGoogleVision: false, // Mettre à true pour utiliser Google Vision si configuré
+        preferGoogleVision: true, // Utiliser Google Vision si configuré, sinon fallback vers Tesseract
         onProgress: (progress) => {
           setOcrProgress(progress);
         }
@@ -67,6 +69,9 @@ function App() {
       const text = result.text.trim();
       setDetectedText(text);
 
+      console.log('🔍 Texte détecté (brut):', text);
+      console.log('📊 Source OCR:', result.source || 'unknown');
+
       if (!text) {
         alert('Aucun texte détecté sur l\'image. Essayez avec une image plus claire ou utilisez le mode recherche.');
         setOcrProgress(null);
@@ -74,42 +79,65 @@ function App() {
         return;
       }
 
-      // Extraire les noms de Pokémon possibles
+      // Extraire TOUS les mots pour affichage et sélection
+      const allWords = extractAllWords(text);
+      setDetectedWords(allWords);
+
+      console.log('📝 Tous les mots extraits:', allWords);
+
+      // Extraire les noms de Pokémon possibles (mots filtrés)
       const pokemonNames = extractPokemonNames(text);
 
+      console.log('🎯 Noms Pokémon suggérés:', pokemonNames);
+
       if (pokemonNames.length === 0) {
-        alert(`Texte détecté mais aucun nom de Pokémon identifié.\n\nTexte: "${text.substring(0, 100)}..."\n\nUtilisez le mode recherche pour chercher manuellement.`);
+        // Pas de suggestions, mais afficher tous les mots pour sélection manuelle
         setOcrProgress(null);
         setLoading(false);
+        alert(`Texte détecté mais aucun nom de Pokémon identifié automatiquement.\n\n📝 Cliquez sur un mot ci-dessous pour chercher cette carte.`);
         return;
       }
 
       // Chercher le premier nom de Pokémon trouvé
       const searchName = pokemonNames[0];
-      setOcrProgress({ status: `Recherche de "${searchName}"...`, progress: 100 });
-
-      // Rechercher la carte
-      const searchResult = await pokemon.card.where({
-        q: `name:"${searchName}*"`,
-        pageSize: 20,
-        orderBy: '-set.releaseDate'
-      });
-
-      setCards(searchResult.data);
-
-      if (searchResult.data.length === 0) {
-        const message = pokemonNames.length > 1
-          ? `Aucune carte trouvée pour "${searchName}".\n\nAutres noms détectés: ${pokemonNames.slice(1, 4).join(', ')}\n\nVous pouvez chercher manuellement avec le mode recherche.`
-          : `Aucune carte trouvée pour "${searchName}".\n\nTexte détecté: "${text.substring(0, 100)}..."\n\nUtilisez le mode recherche pour chercher manuellement.`;
-        alert(message);
-      } else {
-        alert(`✅ Reconnaissance réussie!\n\nTexte détecté: "${searchName}"\nCartes trouvées: ${searchResult.data.length}`);
-      }
+      await searchByWord(searchName);
 
     } catch (error) {
       console.error('Erreur OCR:', error);
       alert(`Erreur lors de la reconnaissance: ${error.message}\n\nUtilisez le mode recherche pour chercher manuellement.`);
-    } finally {
+      setOcrProgress(null);
+      setLoading(false);
+    }
+  };
+
+  // Fonction pour chercher une carte par un mot spécifique
+  const searchByWord = async (searchTerm) => {
+    try {
+      setLoading(true);
+      setOcrProgress({ status: `Recherche de "${searchTerm}"...`, progress: 100 });
+
+      console.log(`🔎 Recherche de: "${searchTerm}"`);
+
+      // Rechercher la carte
+      const searchResult = await pokemon.card.where({
+        q: `name:"${searchTerm}*"`,
+        pageSize: 20,
+        orderBy: '-set.releaseDate'
+      });
+
+      console.log(`✅ Résultats trouvés:`, searchResult.data.length);
+
+      setCards(searchResult.data);
+      setOcrProgress(null);
+      setLoading(false);
+
+      if (searchResult.data.length === 0) {
+        alert(`Aucune carte trouvée pour "${searchTerm}".\n\n💡 Essayez de cliquer sur un autre mot ou utilisez le mode recherche.`);
+      }
+
+    } catch (error) {
+      console.error('Erreur lors de la recherche:', error);
+      alert(`Erreur lors de la recherche de "${searchTerm}".`);
       setOcrProgress(null);
       setLoading(false);
     }
@@ -187,10 +215,33 @@ function App() {
             )}
 
             {detectedText && !loading && (
-              <div className="detected-text">
-                <h3>📝 Texte détecté</h3>
-                <p>{detectedText}</p>
-              </div>
+              <>
+                <div className="detected-text">
+                  <h3>📝 Texte détecté</h3>
+                  <p>{detectedText}</p>
+                </div>
+
+                {detectedWords.length > 0 && (
+                  <div className="detected-words">
+                    <h3>🎯 Mots détectés - Cliquez pour chercher</h3>
+                    <div className="words-grid">
+                      {detectedWords.map((word, index) => (
+                        <button
+                          key={`${word}-${index}`}
+                          className="word-btn"
+                          onClick={() => searchByWord(word)}
+                          disabled={loading}
+                        >
+                          {word}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="words-hint">
+                      💡 Astuce: Cliquez sur le nom du Pokémon pour lancer la recherche
+                    </p>
+                  </div>
+                )}
+              </>
             )}
 
             <div className="image-info">
