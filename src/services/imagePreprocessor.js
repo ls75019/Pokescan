@@ -27,21 +27,25 @@ export const loadImage = (base64) => {
 };
 
 /**
- * Extraire la zone du nom de la carte Pokémon (généralement 30% supérieur)
+ * Extraire la zone du nom de la carte Pokémon
+ * Sur une carte standard, le nom est dans les 12% supérieurs, centré horizontalement
  */
 export const extractNameRegion = (canvas) => {
   const nameCanvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
 
-  // Zone du nom : 30% de hauteur en haut, largeur complète
-  const width = canvas.width;
-  const height = Math.floor(canvas.height * 0.3);
+  // Zone du nom : 12% de hauteur en haut, 80% de largeur (centré)
+  const fullWidth = canvas.width;
+  const startX = Math.floor(fullWidth * 0.1);  // Commencer à 10% du bord gauche
+  const width = Math.floor(fullWidth * 0.8);    // Prendre 80% de la largeur
+  const startY = Math.floor(canvas.height * 0.03); // Commencer à 3% du haut
+  const height = Math.floor(canvas.height * 0.12);  // Prendre 12% de hauteur
 
   nameCanvas.width = width;
   nameCanvas.height = height;
 
   const nameCtx = nameCanvas.getContext('2d');
-  nameCtx.drawImage(canvas, 0, 0, width, height, 0, 0, width, height);
+  nameCtx.drawImage(canvas, startX, startY, width, height, 0, 0, width, height);
 
   return nameCanvas;
 };
@@ -127,6 +131,74 @@ export const applyThreshold = (canvas, threshold = 128) => {
 };
 
 /**
+ * Calculer le seuil optimal avec la méthode d'Otsu
+ */
+export const calculateOtsuThreshold = (canvas) => {
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+
+  // Calculer l'histogramme
+  const histogram = new Array(256).fill(0);
+  for (let i = 0; i < data.length; i += 4) {
+    histogram[data[i]]++;
+  }
+
+  const total = canvas.width * canvas.height;
+
+  let sum = 0;
+  for (let i = 0; i < 256; i++) {
+    sum += i * histogram[i];
+  }
+
+  let sumB = 0;
+  let wB = 0;
+  let wF = 0;
+  let maxVariance = 0;
+  let threshold = 0;
+
+  for (let i = 0; i < 256; i++) {
+    wB += histogram[i];
+    if (wB === 0) continue;
+
+    wF = total - wB;
+    if (wF === 0) break;
+
+    sumB += i * histogram[i];
+
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+
+    const variance = wB * wF * (mB - mF) * (mB - mF);
+
+    if (variance > maxVariance) {
+      maxVariance = variance;
+      threshold = i;
+    }
+  }
+
+  return threshold;
+};
+
+/**
+ * Inverser les couleurs (noir devient blanc et vice versa)
+ */
+export const invert = (canvas) => {
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 255 - data[i];       // Rouge
+    data[i + 1] = 255 - data[i + 1]; // Vert
+    data[i + 2] = 255 - data[i + 2]; // Bleu
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+};
+
+/**
  * Augmenter la netteté de l'image
  */
 export const sharpen = (canvas) => {
@@ -191,7 +263,10 @@ export const resize = (canvas, targetWidth = 2000) => {
 /**
  * Pipeline complet de prétraitement pour zone de nom
  */
-export const preprocessForNameOCR = async (base64Image) => {
+export const preprocessForNameOCR = async (base64Image, options = {}) => {
+  const { returnDebugImages = false } = options;
+  const debugImages = {};
+
   console.log('🖼️ [Preprocessor] Début du prétraitement pour le nom...');
 
   // 1. Charger l'image
@@ -199,9 +274,13 @@ export const preprocessForNameOCR = async (base64Image) => {
   let canvas = imageToCanvas(img);
   console.log('📐 [Preprocessor] Image originale:', canvas.width, 'x', canvas.height);
 
+  if (returnDebugImages) {
+    debugImages.original = canvas.toDataURL('image/png');
+  }
+
   // 2. Redimensionner si trop petite
   if (canvas.width < 1500) {
-    canvas = resize(canvas, 2000);
+    canvas = resize(canvas, 2500);
     console.log('🔍 [Preprocessor] Redimensionné à:', canvas.width, 'x', canvas.height);
   }
 
@@ -209,21 +288,45 @@ export const preprocessForNameOCR = async (base64Image) => {
   canvas = extractNameRegion(canvas);
   console.log('✂️ [Preprocessor] Zone nom extraite:', canvas.width, 'x', canvas.height);
 
-  // 4. Augmenter le contraste
-  canvas = increaseContrast(canvas, 60);
+  if (returnDebugImages) {
+    debugImages.cropped = canvas.toDataURL('image/png');
+  }
+
+  // 4. Augmenter le contraste fortement
+  canvas = increaseContrast(canvas, 80);
   console.log('🌈 [Preprocessor] Contraste augmenté');
+
+  if (returnDebugImages) {
+    debugImages.contrast = canvas.toDataURL('image/png');
+  }
 
   // 5. Convertir en niveaux de gris
   canvas = toGrayscale(canvas);
   console.log('⚫ [Preprocessor] Converti en niveaux de gris');
 
-  // 6. Appliquer un seuil adaptatif
-  canvas = applyThreshold(canvas, 140);
+  if (returnDebugImages) {
+    debugImages.grayscale = canvas.toDataURL('image/png');
+  }
+
+  // 6. Calculer le seuil optimal avec Otsu
+  const otsuThreshold = calculateOtsuThreshold(canvas);
+  console.log('🎯 [Preprocessor] Seuil Otsu calculé:', otsuThreshold);
+
+  // 7. Appliquer le seuil
+  canvas = applyThreshold(canvas, otsuThreshold);
   console.log('🎯 [Preprocessor] Seuil appliqué');
 
-  // 7. Retourner en base64
+  if (returnDebugImages) {
+    debugImages.threshold = canvas.toDataURL('image/png');
+  }
+
+  // 8. Retourner en base64
   const result = canvas.toDataURL('image/png');
   console.log('✅ [Preprocessor] Prétraitement terminé');
+
+  if (returnDebugImages) {
+    return { image: result, debugImages };
+  }
 
   return result;
 };

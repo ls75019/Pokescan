@@ -53,13 +53,17 @@ export const fetchPokemonNames = async () => {
 /**
  * Reconnaissance OCR améliorée pour le nom du Pokémon
  */
-export const recognizePokemonName = async (imageBase64, onProgress = null) => {
+export const recognizePokemonName = async (imageBase64, onProgress = null, options = {}) => {
+  const { returnDebugImages = false } = options;
+
   console.log('🎯 [Enhanced OCR] Début de la reconnaissance du nom...');
 
   if (onProgress) onProgress({ status: 'Prétraitement de l\'image...', progress: 10 });
 
   // 1. Prétraiter l'image pour extraire et améliorer la zone du nom
-  const preprocessedImage = await preprocessForNameOCR(imageBase64);
+  const preprocessResult = await preprocessForNameOCR(imageBase64, { returnDebugImages });
+  const preprocessedImage = returnDebugImages ? preprocessResult.image : preprocessResult;
+  const debugImages = returnDebugImages ? preprocessResult.debugImages : null;
 
   if (onProgress) onProgress({ status: 'Analyse OCR de la zone du nom...', progress: 30 });
 
@@ -115,13 +119,20 @@ export const recognizePokemonName = async (imageBase64, onProgress = null) => {
 
   if (onProgress) onProgress({ status: 'Terminé!', progress: 100 });
 
-  return {
+  const result = {
     rawText: data.text,
     potentialNames,
     bestMatches: uniqueMatches.slice(0, 10),
     bestMatch: uniqueMatches[0] || null,
     confidence: uniqueMatches[0]?.confidence || 0
   };
+
+  if (returnDebugImages && debugImages) {
+    result.debugImages = debugImages;
+    result.preprocessedImage = preprocessedImage;
+  }
+
+  return result;
 };
 
 /**
@@ -173,7 +184,9 @@ export const recognizeCardNumber = async (imageBase64, onProgress = null) => {
 /**
  * Reconnaissance complète : nom + numéro
  */
-export const recognizeCard = async (imageBase64, onProgress = null) => {
+export const recognizeCard = async (imageBase64, onProgress = null, options = {}) => {
+  const { returnDebugImages = true } = options; // Debug activé par défaut
+
   console.log('🎴 [Enhanced OCR] Début de la reconnaissance complète...');
 
   const updateProgress = (status, progress) => {
@@ -185,7 +198,7 @@ export const recognizeCard = async (imageBase64, onProgress = null) => {
     updateProgress('Reconnaissance du nom du Pokémon...', 0);
     const nameResult = await recognizePokemonName(imageBase64, (p) => {
       updateProgress(p.status, Math.floor(p.progress * 0.6));
-    });
+    }, { returnDebugImages });
 
     // Phase 2 : Reconnaissance du numéro (60-100%)
     updateProgress('Reconnaissance du numéro de carte...', 60);

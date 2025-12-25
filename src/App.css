@@ -808,6 +808,44 @@ body {
   overflow-y: auto;
 }
 
+.debug-images {
+  margin-top: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.debug-image-item {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 15px;
+  border-radius: 8px;
+  border: 2px solid rgba(78, 205, 196, 0.2);
+}
+
+.debug-image-item h4 {
+  color: var(--secondary-color);
+  margin-bottom: 10px;
+  font-size: 1rem;
+}
+
+.debug-image-item img {
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid rgba(78, 205, 196, 0.3);
+  display: block;
+  margin: 0 auto;
+}
+
+.debug-image-item .image-hint {
+  margin-top: 10px;
+  color: #ffeb3b;
+  font-style: italic;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
 @media (max-width: 768px) {
   .debug-field {
     flex-direction: column;

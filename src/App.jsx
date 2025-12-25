@@ -115,6 +115,13 @@ function App() {
         debugData.steps.push(`🎯 Top 5 correspondances: ${topMatches}`);
       }
 
+      // Ajouter les images de debug
+      if (nameResult.debugImages) {
+        debugData.debugImages = nameResult.debugImages;
+        debugData.preprocessedImage = nameResult.preprocessedImage;
+        debugData.steps.push(`🖼️ Images de prétraitement disponibles (voir ci-dessous)`);
+      }
+
       console.log('🎯 Meilleurs matches:', bestMatches);
 
       if (!nameResult.bestMatch) {
@@ -436,6 +443,44 @@ function App() {
                     <details className="debug-details">
                       <summary>📇 Premières cartes trouvées</summary>
                       <pre>{JSON.stringify(debugInfo.cards, null, 2)}</pre>
+                    </details>
+                  )}
+                  {debugInfo.debugImages && (
+                    <details className="debug-details" open>
+                      <summary>🖼️ Images de prétraitement ({Object.keys(debugInfo.debugImages).length} étapes)</summary>
+                      <div className="debug-images">
+                        {debugInfo.debugImages.original && (
+                          <div className="debug-image-item">
+                            <h4>1️⃣ Image originale</h4>
+                            <img src={debugInfo.debugImages.original} alt="Original" />
+                          </div>
+                        )}
+                        {debugInfo.debugImages.cropped && (
+                          <div className="debug-image-item">
+                            <h4>2️⃣ Zone du nom extraite</h4>
+                            <img src={debugInfo.debugImages.cropped} alt="Cropped" />
+                          </div>
+                        )}
+                        {debugInfo.debugImages.contrast && (
+                          <div className="debug-image-item">
+                            <h4>3️⃣ Contraste augmenté</h4>
+                            <img src={debugInfo.debugImages.contrast} alt="Contrast" />
+                          </div>
+                        )}
+                        {debugInfo.debugImages.grayscale && (
+                          <div className="debug-image-item">
+                            <h4>4️⃣ Niveaux de gris</h4>
+                            <img src={debugInfo.debugImages.grayscale} alt="Grayscale" />
+                          </div>
+                        )}
+                        {debugInfo.debugImages.threshold && (
+                          <div className="debug-image-item">
+                            <h4>5️⃣ Binarisation (final)</h4>
+                            <img src={debugInfo.debugImages.threshold} alt="Threshold" />
+                            <p className="image-hint">Cette image est envoyée à Tesseract pour OCR</p>
+                          </div>
+                        )}
+                      </div>
                     </details>
                   )}
                 </div>
