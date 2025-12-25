@@ -162,9 +162,9 @@ export const detectAndCropCard = async (imageBase64) => {
 
     console.log('📐 [Card Detector] Image originale:', canvas.width, 'x', canvas.height);
 
-    // Si l'image est déjà petite, pas besoin de détecter
-    if (canvas.width < 800 && canvas.height < 800) {
-      console.log('✅ [Card Detector] Image déjà petite, pas de détection nécessaire');
+    // Si l'image est très petite, sauter la détection
+    if (canvas.width < 400 && canvas.height < 400) {
+      console.log('✅ [Card Detector] Image très petite, pas de détection nécessaire');
       return imageBase64;
     }
 
@@ -186,18 +186,25 @@ export const detectAndCropCard = async (imageBase64) => {
     const aspectRatio = cardWidth / cardHeight;
 
     // Les cartes Pokémon ont un ratio environ 0.7 (63mm x 88mm)
-    if (aspectRatio < 0.5 || aspectRatio > 0.9) {
+    // Tolérance plus large pour gérer différents angles
+    if (aspectRatio < 0.4 || aspectRatio > 1.0) {
       console.warn('⚠️ [Card Detector] Ratio suspect:', aspectRatio, '- utilisation image complète');
       return imageBase64;
     }
 
-    // La carte doit occuper au moins 20% de l'image
+    // La carte doit occuper au moins 5% de l'image (réduit de 20% pour cartes éloignées)
     const cardArea = cardWidth * cardHeight;
     const totalArea = width * height;
     const coverage = cardArea / totalArea;
 
-    if (coverage < 0.2) {
+    if (coverage < 0.05) {
       console.warn('⚠️ [Card Detector] Carte trop petite:', (coverage * 100).toFixed(1), '% - utilisation image complète');
+      return imageBase64;
+    }
+
+    // Si la carte détectée est presque toute l'image (>90%), pas besoin de cropper
+    if (coverage > 0.9) {
+      console.log('ℹ️ [Card Detector] Carte occupe toute l\'image, pas de crop nécessaire');
       return imageBase64;
     }
 

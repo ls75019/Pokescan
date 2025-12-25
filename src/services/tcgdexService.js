@@ -7,64 +7,43 @@
 const TCGDEX_API_BASE = 'https://api.tcgdex.net/v2/fr'; // API en français
 
 /**
- * Rechercher une carte Pokémon par nom
+ * Nettoyer un nom de Pokémon pour la recherche
+ */
+const cleanPokemonName = (name) => {
+  return name
+    .toLowerCase()
+    // Enlever accents (Mélofée → melofee)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    // Enlever "EX", "V", "VMAX", "GX", etc.
+    .replace(/\s+(ex|v|vmax|vstar|gx|mega|prime)\s*$/i, '')
+    // Enlever caractères spéciaux
+    .replace(/[^a-z0-9\s\-]/g, '')
+    .trim();
+};
+
+/**
+ * Rechercher une carte Pokémon par nom (utilise toujours la recherche globale)
  */
 export const searchCardByName = async (name, number = null) => {
   console.log('🔎 [TCGdex] Recherche de carte:', { name, number });
 
-  try {
-    // Rechercher toutes les cartes correspondant au nom
-    const response = await fetch(`${TCGDEX_API_BASE}/cards/${encodeURIComponent(name)}`);
+  // Nettoyer le nom
+  const cleanName = cleanPokemonName(name);
+  console.log('🧹 [TCGdex] Nom nettoyé:', cleanName);
 
-    console.log('📡 [TCGdex] Réponse HTTP:', response.status);
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        console.log('⚠️ [TCGdex] Carte non trouvée, essai avec recherche globale...');
-        return await searchCardGlobal(name, number);
-      }
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const cards = await response.json();
-    console.log('✅ [TCGdex] Cartes trouvées:', cards.length || 1);
-
-    // Si c'est un tableau
-    if (Array.isArray(cards)) {
-      // Si on a un numéro, essayer de trouver la carte exacte
-      if (number && cards.length > 0) {
-        const exactMatch = cards.find(card =>
-          card.localId === number ||
-          card.id?.includes(number)
-        );
-        if (exactMatch) {
-          return exactMatch;
-        }
-      }
-
-      // Sinon retourner la première carte
-      return cards[0] || null;
-    }
-
-    // Si c'est un objet unique
-    return cards;
-
-  } catch (error) {
-    console.error('❌ [TCGdex] Erreur recherche par nom:', error);
-
-    // Fallback: recherche globale
-    return await searchCardGlobal(name, number);
-  }
+  // Utiliser directement la recherche globale qui est plus flexible
+  return await searchCardGlobal(cleanName, number, name);
 };
 
 /**
  * Recherche globale dans toutes les cartes
  */
-export const searchCardGlobal = async (name, number = null) => {
-  console.log('🌐 [TCGdex] Recherche globale:', { name, number });
+export const searchCardGlobal = async (cleanedName, number = null, originalName = null) => {
+  console.log('🌐 [TCGdex] Recherche globale:', { cleanedName, number, originalName });
 
   try {
-    // Récupérer toutes les cartes (avec pagination)
+    // Récupérer toutes les cartes (liste de base)
     const response = await fetch(`${TCGDEX_API_BASE}/cards`);
 
     if (!response.ok) {
@@ -74,33 +53,48 @@ export const searchCardGlobal = async (name, number = null) => {
     const allCards = await response.json();
     console.log('📦 [TCGdex] Total cartes disponibles:', allCards.length);
 
-    // Filtrer par nom (recherche partielle, insensible à la casse)
-    const nameMatches = allCards.filter(card => {
-      const cardName = card.name?.toLowerCase() || '';
-      const searchName = name.toLowerCase();
+    // Nettoyer le nom de recherche (sans accents)
+    const searchNameClean = cleanedName.toLowerCase();
 
-      return cardName.includes(searchName) || searchName.includes(cardName);
+    // Filtrer par nom avec matching flexible
+    const nameMatches = allCards.filter(card => {
+      if (!card.name) return false;
+
+      // Nettoyer le nom de la carte aussi
+      const cardNameClean = cleanPokemonName(card.name);
+
+      // Matching bi-directionnel
+      return (
+        cardNameClean.includes(searchNameClean) ||
+        searchNameClean.includes(cardNameClean) ||
+        // Essayer aussi avec nom original
+        (originalName && card.name.toLowerCase().includes(originalName.toLowerCase()))
+      );
     });
 
     console.log('🔍 [TCGdex] Correspondances par nom:', nameMatches.length);
 
     if (nameMatches.length === 0) {
+      console.log('❌ [TCGdex] Aucune correspondance trouvée');
       return null;
     }
 
     // Si on a un numéro, essayer de trouver la carte exacte
     if (number) {
-      const exactMatch = nameMatches.find(card =>
-        card.localId === number ||
-        card.id?.includes(number)
-      );
+      const numberStr = number.toString();
+      const exactMatch = nameMatches.find(card => {
+        const cardNum = card.localId?.toString() || '';
+        return cardNum === numberStr || cardNum.includes(numberStr);
+      });
+
       if (exactMatch) {
-        // Récupérer les détails complets de la carte
+        console.log('✅ [TCGdex] Match exact trouvé:', exactMatch.id);
         return await getCardDetails(exactMatch.id);
       }
     }
 
     // Récupérer les détails de la première carte
+    console.log('✅ [TCGdex] Utilisation première correspondance:', nameMatches[0].id);
     return await getCardDetails(nameMatches[0].id);
 
   } catch (error) {
@@ -139,18 +133,34 @@ export const getCardDetails = async (cardId) => {
 export const formatCard = (card) => {
   if (!card) return null;
 
-  // Construction URL image TCGdex
-  // Format: https://assets.tcgdex.net/fr/swsh/swsh3/186/high.webp
-  const setId = card.set?.id || 'base1';
-  const localId = card.localId || '1';
-  const imageUrl = `https://assets.tcgdex.net/fr/${setId}/${localId}/high.webp`;
+  console.log('🎴 [TCGdex] Formatage carte:', card.id);
+  console.log('📊 [TCGdex] Données carte:', JSON.stringify(card, null, 2));
 
-  console.log('🖼️ [TCGdex] URL image:', imageUrl);
+  // L'API retourne l'image dans card.image avec le chemin complet
+  // Format TCGdex API: "fr/swsh/swsh3/186" ou objet avec .high et .low
+  let imageUrl = '';
+
+  if (card.image) {
+    if (typeof card.image === 'string') {
+      // Si c'est une string, construire l'URL complète
+      imageUrl = `https://assets.tcgdex.net/${card.image}/high.webp`;
+    } else if (card.image.high) {
+      // Si c'est un objet avec .high
+      imageUrl = card.image.high;
+    }
+  } else {
+    // Fallback: construire manuellement
+    const setId = card.set?.id || 'base1';
+    const localId = card.localId || '1';
+    imageUrl = `https://assets.tcgdex.net/fr/${setId}/${localId}/high.webp`;
+  }
+
+  console.log('🖼️ [TCGdex] URL image finale:', imageUrl);
 
   return {
     id: card.id,
     name: card.name,
-    number: localId,
+    number: card.localId || card.number || '?',
     set: {
       name: card.set?.name || 'N/A',
       printedTotal: card.set?.cardCount?.total || '?'

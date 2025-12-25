@@ -53,12 +53,18 @@ export const similarity = (str1, str2) => {
 
 /**
  * Nettoyer un texte OCR pour le matching
+ * Enlève accents, caractères spéciaux, normalise
  */
 export const cleanOCRText = (text) => {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\s\-]/g, '') // Garder seulement lettres, chiffres, espaces et tirets
-    .replace(/\s+/g, ' ')           // Normaliser les espaces
+    // Remplacer les caractères accentués (é → e, è → e, etc.)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Enlever les diacritiques
+    // Enlever caractères spéciaux sauf lettres, chiffres, espaces, tirets
+    .replace(/[^a-z0-9\s\-]/g, '')
+    // Normaliser espaces multiples
+    .replace(/\s+/g, ' ')
     .trim();
 };
 
