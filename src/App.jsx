@@ -13,24 +13,70 @@ function App() {
   const [error, setError] = useState(null);
   const videoRef = useRef(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const scanIntervalRef = useRef(null); // Pour le scan en temps réel
+  const [isScanning, setIsScanning] = useState(false); // État du scan auto
 
-  // Démarrer la caméra
+  // Démarrer la caméra avec scan automatique
   const startCamera = async () => {
     try {
+      // Reset états
+      setCard(null);
+      setOcrResult(null);
+      setError(null);
+      setImage(null);
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' } // Caméra arrière sur mobile
+        video: {
+          facingMode: 'environment', // Caméra arrière sur mobile
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
       });
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setCameraActive(true);
+
+        // Attendre que la vidéo soit prête
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play();
+          // Démarrer le scan automatique après 1 seconde
+          setTimeout(() => {
+            startAutoScan();
+          }, 1000);
+        };
       }
     } catch (err) {
       setError('Impossible d\'accéder à la caméra: ' + err.message);
     }
   };
 
+  // Démarrer le scan automatique
+  const startAutoScan = () => {
+    console.log('🔄 Démarrage du scan automatique...');
+    setIsScanning(true);
+
+    // Scanner toutes les 2 secondes
+    scanIntervalRef.current = setInterval(() => {
+      captureAndAnalyze();
+    }, 2000);
+  };
+
+  // Arrêter le scan automatique
+  const stopAutoScan = () => {
+    console.log('⏹️ Arrêt du scan automatique');
+    setIsScanning(false);
+
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+  };
+
   // Arrêter la caméra
   const stopCamera = () => {
+    stopAutoScan(); // Arrêter le scan d'abord
+
     if (videoRef.current && videoRef.current.srcObject) {
       const stream = videoRef.current.srcObject;
       stream.getTracks().forEach(track => track.stop());
@@ -39,9 +85,30 @@ function App() {
     }
   };
 
-  // Prendre une photo
+  // Capturer et analyser (pour scan automatique)
+  const captureAndAnalyze = async () => {
+    if (!videoRef.current || loading || !isScanning) {
+      return; // Ne rien faire si déjà en train de scanner
+    }
+
+    console.log('📸 Capture frame pour analyse...');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoRef.current, 0, 0);
+    const imageData = canvas.toDataURL('image/jpeg', 0.8); // Qualité 80% pour être plus rapide
+
+    // Analyser sans bloquer le scan
+    await handleImageAnalysis(imageData, true); // true = mode auto
+  };
+
+  // Prendre une photo manuellement (bouton)
   const takePhoto = () => {
     if (videoRef.current) {
+      stopAutoScan(); // Arrêter le scan auto
+
       const canvas = document.createElement('canvas');
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;
@@ -49,8 +116,7 @@ function App() {
       ctx.drawImage(videoRef.current, 0, 0);
       const imageData = canvas.toDataURL('image/jpeg');
       setImage(imageData);
-      stopCamera();
-      handleImageAnalysis(imageData);
+      handleImageAnalysis(imageData, false); // false = mode manuel
     }
   };
 
@@ -69,11 +135,19 @@ function App() {
   };
 
   // Analyser l'image
-  const handleImageAnalysis = async (imageData) => {
+  const handleImageAnalysis = async (imageData, isAutoMode = false) => {
+    // En mode auto, ne pas bloquer si déjà en chargement
+    if (isAutoMode && loading) {
+      console.log('⏭️ Scan en cours, skip cette frame');
+      return;
+    }
+
     setLoading(true);
-    setError(null);
-    setOcrResult(null);
-    setCard(null);
+    if (!isAutoMode) {
+      setError(null);
+      setOcrResult(null);
+      setCard(null);
+    }
 
     try {
       // 1. Détecter et isoler la carte
@@ -101,20 +175,31 @@ function App() {
         rawNumber: result.number.rawText // Texte brut pour debug
       });
 
-      // 2. Recherche de la carte
+      // 3. Recherche de la carte
       // Essayer d'abord avec le nom détecté, sinon avec le texte brut OCR
       const searchName = pokemonName || extractPotentialNames(result.name.rawText)[0];
 
       if (searchName) {
         console.log('🔎 Recherche carte avec:', searchName);
-        await searchCard(searchName, cardNumber);
+        const foundCard = await searchCard(searchName, cardNumber);
+
+        // Si une carte est trouvée en mode auto, arrêter la caméra
+        if (foundCard && isAutoMode) {
+          console.log('🎉 Carte trouvée en mode auto, arrêt de la caméra!');
+          stopCamera();
+        }
       } else {
-        setError('Aucun nom de Pokémon détecté');
+        if (!isAutoMode) {
+          setError('Aucun nom de Pokémon détecté');
+        }
       }
 
     } catch (err) {
       console.error('❌ Erreur:', err);
-      setError(err.message);
+      // En mode auto, ne pas afficher les erreurs (sinon ça spam)
+      if (!isAutoMode) {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -133,9 +218,11 @@ function App() {
         // Formater la carte pour l'affichage
         const formattedCard = formatCard(card);
         setCard(formattedCard);
+        return formattedCard; // Retourner la carte trouvée
       } else {
         console.log('❌ Aucune carte trouvée');
         setError(`Aucune carte trouvée pour "${name}"${number ? ` (${number})` : ''}`);
+        return null;
       }
 
     } catch (err) {
@@ -151,6 +238,7 @@ function App() {
       }
 
       setError(errorMsg);
+      return null;
     }
   };
 
@@ -183,15 +271,29 @@ function App() {
         {/* Caméra active */}
         {cameraActive && (
           <div className="camera-section">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              className="camera-video"
-            />
+            <div className="camera-container">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                className="camera-video"
+              />
+              {/* Overlay guide de cadrage */}
+              <div className="card-guide-overlay">
+                <div className="card-guide">
+                  <div className="guide-corner guide-top-left"></div>
+                  <div className="guide-corner guide-top-right"></div>
+                  <div className="guide-corner guide-bottom-left"></div>
+                  <div className="guide-corner guide-bottom-right"></div>
+                  <div className="guide-text">
+                    {isScanning ? '🔍 Scan en cours...' : 'Cadrez votre carte'}
+                  </div>
+                </div>
+              </div>
+            </div>
             <div className="camera-controls">
-              <button className="btn btn-primary" onClick={takePhoto}>
-                📸 Prendre la photo
+              <button className="btn btn-primary" onClick={takePhoto} disabled={loading}>
+                📸 Capturer maintenant
               </button>
               <button className="btn btn-secondary" onClick={stopCamera}>
                 ❌ Annuler
@@ -262,6 +364,9 @@ function App() {
               <p><strong>Type:</strong> {card.types?.join(', ') || 'N/A'}</p>
               {card.hp && <p><strong>HP:</strong> {card.hp}</p>}
             </div>
+            <button className="btn btn-primary" onClick={startCamera} style={{ marginTop: '20px' }}>
+              🔄 Scanner une autre carte
+            </button>
           </div>
         )}
       </main>
