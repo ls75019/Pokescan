@@ -33,12 +33,13 @@ export const recognizeTextWithTesseract = async (imageSource, onProgress = null)
     await worker.terminate();
 
     return {
-      text: data.text,
-      confidence: data.confidence,
-      words: data.words.map(w => ({
-        text: w.text,
-        confidence: w.confidence
-      }))
+      text: data.text || '',
+      confidence: data.confidence || 0,
+      words: (data.words || []).map(w => ({
+        text: w.text || '',
+        confidence: w.confidence || 0
+      })),
+      source: 'tesseract'
     };
   } catch (error) {
     await worker.terminate();
@@ -51,21 +52,48 @@ export const recognizeTextWithTesseract = async (imageSource, onProgress = null)
  * Nécessite la configuration de GOOGLE_APPLICATION_CREDENTIALS_JSON dans Netlify
  */
 export const recognizeTextWithGoogleVision = async (imageBase64) => {
+  console.log('🌐 [Google Vision] Tentative de connexion à la fonction Netlify...');
+
   try {
+    console.log('🌐 [Google Vision] Envoi de la requête à /.netlify/functions/vision-ocr');
+    console.log('🌐 [Google Vision] Taille de l\'image:', imageBase64.length, 'caractères');
+
     const response = await axios.post('/.netlify/functions/vision-ocr', {
       image: imageBase64
+    }, {
+      timeout: 30000, // 30 secondes timeout
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
 
+    console.log('✅ [Google Vision] Réponse reçue:', response.status);
+    console.log('✅ [Google Vision] Données:', response.data);
+
     return {
-      text: response.data.text,
-      detections: response.data.detections,
+      text: response.data.text || '',
+      detections: response.data.detections || [],
       source: 'google-vision'
     };
   } catch (error) {
+    console.error('❌ [Google Vision] Erreur:', error);
+    console.error('❌ [Google Vision] Status:', error.response?.status);
+    console.error('❌ [Google Vision] Data:', error.response?.data);
+    console.error('❌ [Google Vision] Message:', error.message);
+
     if (error.response?.data?.error === 'Google Vision API not configured') {
-      throw new Error('Google Vision API is not configured. Using Tesseract.js instead.');
+      throw new Error('Google Vision API not configured: ' + (error.response.data.message || 'No details'));
     }
-    throw error;
+
+    if (error.response?.status === 404) {
+      throw new Error('Fonction Netlify non trouvée (404). Vérifiez que la fonction est déployée.');
+    }
+
+    if (error.response?.status === 500) {
+      throw new Error('Erreur serveur (500): ' + (error.response.data?.message || error.message));
+    }
+
+    throw new Error('Google Vision error: ' + error.message);
   }
 };
 
@@ -91,13 +119,16 @@ export const recognizeText = async (imageSource, options = {}) => {
 
   // Essayer Google Vision en premier si demandé
   if (preferGoogleVision) {
+    console.log('🎯 [OCR Service] Google Vision demandé, tentative...');
     try {
-      if (onProgress) onProgress({ status: 'Using Google Vision API...', progress: 0 });
+      if (onProgress) onProgress({ status: 'Utilisation de Google Vision API...', progress: 0 });
       const result = await recognizeTextWithGoogleVision(imageBase64);
-      if (onProgress) onProgress({ status: 'Complete', progress: 100 });
+      console.log('✅ [OCR Service] Google Vision réussi!');
+      if (onProgress) onProgress({ status: 'Complété avec Google Vision', progress: 100 });
       return result;
     } catch (error) {
-      console.warn('Google Vision failed, falling back to Tesseract.js:', error.message);
+      console.warn('⚠️ [OCR Service] Google Vision échoué, basculement vers Tesseract.js');
+      console.warn('⚠️ [OCR Service] Raison:', error.message);
       // Continuer avec Tesseract
     }
   }
