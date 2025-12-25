@@ -3,6 +3,7 @@ import { recognizeCard } from './services/enhancedOcrService';
 import { detectAndCropCard } from './services/cardDetector';
 import { extractPotentialNames } from './services/fuzzyMatcher';
 import { searchCardByName, formatCard } from './services/tcgdexService';
+import { searchSoldListings, formatPrice, formatDate } from './services/ebayService';
 import './App.css';
 
 function App() {
@@ -16,6 +17,8 @@ function App() {
   const scanIntervalRef = useRef(null); // Pour le scan en temps réel
   const [isScanning, setIsScanning] = useState(false); // État du scan auto
   const [videoReady, setVideoReady] = useState(false); // Vidéo démarrée ?
+  const [ebaySales, setEbaySales] = useState(null); // Ventes eBay
+  const [loadingEbay, setLoadingEbay] = useState(false); // Chargement eBay
 
   // Démarrer la caméra
   const startCamera = async () => {
@@ -230,6 +233,28 @@ function App() {
     }
   };
 
+  // Rechercher les ventes eBay
+  const fetchEbaySales = async (cardName, cardNumber) => {
+    setLoadingEbay(true);
+    setEbaySales(null);
+
+    try {
+      console.log('🛒 Recherche ventes eBay...');
+      const sales = await searchSoldListings(cardName, cardNumber);
+
+      if (sales.success) {
+        console.log(`✅ ${sales.count} ventes eBay trouvées`);
+        setEbaySales(sales);
+      } else {
+        console.log('⚠️ Erreur recherche eBay:', sales.error);
+      }
+    } catch (error) {
+      console.error('❌ Erreur eBay:', error);
+    } finally {
+      setLoadingEbay(false);
+    }
+  };
+
   // Rechercher une carte avec TCGdex (API française)
   const searchCard = async (name, number = null) => {
     try {
@@ -243,6 +268,10 @@ function App() {
         // Formater la carte pour l'affichage
         const formattedCard = formatCard(card);
         setCard(formattedCard);
+
+        // Rechercher les ventes eBay en arrière-plan
+        fetchEbaySales(formattedCard.name, formattedCard.number);
+
         return formattedCard; // Retourner la carte trouvée
       } else {
         console.log('❌ Aucune carte trouvée');
@@ -419,6 +448,88 @@ function App() {
               <p><strong>Type:</strong> {card.types?.join(', ') || 'N/A'}</p>
               {card.hp && <p><strong>HP:</strong> {card.hp}</p>}
             </div>
+
+            {/* Ventes eBay */}
+            <div className="ebay-sales" style={{ marginTop: '30px' }}>
+              <h3>💰 Ventes eBay (90 derniers jours)</h3>
+
+              {loadingEbay && (
+                <div style={{ textAlign: 'center', padding: '20px' }}>
+                  <div className="spinner"></div>
+                  <p>Chargement des ventes...</p>
+                </div>
+              )}
+
+              {!loadingEbay && ebaySales && ebaySales.count > 0 && (
+                <>
+                  {/* Statistiques */}
+                  <div className="sales-stats" style={{
+                    background: '#f5f5f5',
+                    padding: '15px',
+                    borderRadius: '8px',
+                    marginBottom: '20px'
+                  }}>
+                    <h4 style={{ marginBottom: '10px' }}>📊 Statistiques ({ebaySales.statistics.count} ventes)</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <p><strong>Prix min:</strong> {formatPrice(ebaySales.statistics.min)}</p>
+                      <p><strong>Prix max:</strong> {formatPrice(ebaySales.statistics.max)}</p>
+                      <p><strong>Prix moyen:</strong> {formatPrice(ebaySales.statistics.average)}</p>
+                      <p><strong>Prix médian:</strong> {formatPrice(ebaySales.statistics.median)}</p>
+                    </div>
+                  </div>
+
+                  {/* Liste des ventes récentes */}
+                  <h4 style={{ marginBottom: '10px' }}>🕐 Ventes récentes</h4>
+                  <div className="sales-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    {ebaySales.items.slice(0, 10).map((item, index) => (
+                      <div key={index} className="sale-item" style={{
+                        background: '#fff',
+                        border: '1px solid #e0e0e0',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginBottom: '10px'
+                      }}>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                          {item.image && (
+                            <img
+                              src={item.image}
+                              alt={item.title}
+                              style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px' }}
+                            />
+                          )}
+                          <div style={{ flex: 1 }}>
+                            <p style={{ fontWeight: 'bold', fontSize: '0.95em', marginBottom: '5px' }}>
+                              {formatPrice(item.price)}
+                            </p>
+                            <p style={{ fontSize: '0.85em', color: '#666', marginBottom: '3px' }}>
+                              {item.title.substring(0, 60)}...
+                            </p>
+                            <p style={{ fontSize: '0.75em', color: '#999' }}>
+                              {formatDate(item.soldDate)} • {item.condition}
+                            </p>
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ fontSize: '0.8em', color: '#42a5f5' }}
+                            >
+                              Voir sur eBay →
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {!loadingEbay && ebaySales && ebaySales.count === 0 && (
+                <p style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
+                  Aucune vente récente trouvée pour cette carte
+                </p>
+              )}
+            </div>
+
             <button className="btn btn-primary" onClick={startCamera} style={{ marginTop: '20px' }}>
               🔄 Scanner une autre carte
             </button>
