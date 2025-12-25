@@ -6,6 +6,7 @@
 import Tesseract from 'tesseract.js';
 import { preprocessForNameOCR, preprocessForNumberOCR } from './imagePreprocessor';
 import { findBestMatch, findTopMatches, extractCardNumber, extractPotentialNames } from './fuzzyMatcher';
+import { recognizePreprocessedImage } from './ocrSpaceService';
 
 // Cache pour la liste des noms de Pokémon
 let pokemonNamesCache = null;
@@ -65,32 +66,58 @@ export const recognizePokemonName = async (imageBase64, onProgress = null, optio
   const preprocessedImage = returnDebugImages ? preprocessResult.image : preprocessResult;
   const debugImages = returnDebugImages ? preprocessResult.debugImages : null;
 
-  if (onProgress) onProgress({ status: 'Analyse OCR de la zone du nom...', progress: 30 });
+  if (onProgress) onProgress({ status: 'Analyse OCR avec OCR.space...', progress: 30 });
 
-  // 2. Utiliser Tesseract avec des paramètres optimisés
-  const worker = await Tesseract.createWorker('eng', 1, {
-    logger: (m) => {
-      if (m.status === 'recognizing text' && onProgress) {
-        const progress = 30 + Math.floor(m.progress * 40);
-        onProgress({ status: 'Reconnaissance du texte...', progress });
+  // 2. Utiliser OCR.space (meilleur que Tesseract pour polices stylisées)
+  let ocrResult;
+  let ocrSource = 'ocr-space';
+
+  try {
+    console.log('🌐 [Enhanced OCR] Tentative avec OCR.space...');
+    ocrResult = await recognizePreprocessedImage(preprocessedImage);
+    console.log('✅ [Enhanced OCR] OCR.space réussi!');
+    if (onProgress) onProgress({ status: 'OCR.space terminé', progress: 70 });
+  } catch (error) {
+    console.warn('⚠️ [Enhanced OCR] OCR.space échoué, fallback vers Tesseract...');
+    console.warn('⚠️ [Enhanced OCR] Raison:', error.message);
+
+    // Fallback vers Tesseract
+    if (onProgress) onProgress({ status: 'Fallback vers Tesseract...', progress: 40 });
+
+    const worker = await Tesseract.createWorker('eng', 1, {
+      logger: (m) => {
+        if (m.status === 'recognizing text' && onProgress) {
+          const progress = 40 + Math.floor(m.progress * 30);
+          onProgress({ status: 'Reconnaissance du texte (Tesseract)...', progress });
+        }
       }
-    }
-  });
+    });
 
-  await worker.setParameters({
-    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz- ',
-    tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
-  });
+    await worker.setParameters({
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz- ',
+      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
+    });
 
-  const { data } = await worker.recognize(preprocessedImage);
-  await worker.terminate();
+    const { data } = await worker.recognize(preprocessedImage);
+    await worker.terminate();
 
-  console.log('📝 [Enhanced OCR] Texte brut détecté:', data.text);
+    ocrResult = {
+      text: data.text,
+      confidence: data.confidence,
+      source: 'tesseract-fallback'
+    };
+    ocrSource = 'tesseract-fallback';
 
-  if (onProgress) onProgress({ status: 'Recherche du meilleur match...', progress: 70 });
+    if (onProgress) onProgress({ status: 'Tesseract terminé', progress: 70 });
+  }
+
+  console.log('📝 [Enhanced OCR] Texte brut détecté:', ocrResult.text);
+  console.log('📊 [Enhanced OCR] Source:', ocrSource);
+
+  if (onProgress) onProgress({ status: 'Recherche du meilleur match...', progress: 75 });
 
   // 3. Extraire les mots potentiels
-  const potentialNames = extractPotentialNames(data.text);
+  const potentialNames = extractPotentialNames(ocrResult.text);
   console.log('🔍 [Enhanced OCR] Mots potentiels:', potentialNames);
 
   // 4. Charger la liste des noms de Pokémon
@@ -120,11 +147,13 @@ export const recognizePokemonName = async (imageBase64, onProgress = null, optio
   if (onProgress) onProgress({ status: 'Terminé!', progress: 100 });
 
   const result = {
-    rawText: data.text,
+    rawText: ocrResult.text,
     potentialNames,
     bestMatches: uniqueMatches.slice(0, 10),
     bestMatch: uniqueMatches[0] || null,
-    confidence: uniqueMatches[0]?.confidence || 0
+    confidence: uniqueMatches[0]?.confidence || 0,
+    ocrSource, // 'ocr-space' ou 'tesseract-fallback'
+    ocrConfidence: ocrResult.confidence
   };
 
   if (returnDebugImages && debugImages) {

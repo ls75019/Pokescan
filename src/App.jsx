@@ -83,12 +83,25 @@ function App() {
 
       console.log('📊 [App] Résultat OCR complet:', result);
 
-      debugData.ocrSource = 'enhanced-ocr';
-      debugData.steps.push('📊 Source OCR: Tesseract.js amélioré avec prétraitement');
-
       // Résultat du nom
       const nameResult = result.name;
       setDetectedText(nameResult.rawText);
+
+      // Source OCR
+      const ocrSource = nameResult.ocrSource || 'unknown';
+      debugData.ocrSource = ocrSource;
+
+      const ocrSourceLabels = {
+        'ocr-space': '🌐 OCR.space (API gratuite)',
+        'tesseract-fallback': '🔤 Tesseract.js (fallback)',
+        'tesseract': '🔤 Tesseract.js',
+        'unknown': '❓ Inconnu'
+      };
+
+      debugData.steps.push(`📊 Source OCR: ${ocrSourceLabels[ocrSource] || ocrSource}`);
+      if (nameResult.ocrConfidence) {
+        debugData.steps.push(`📈 Confiance OCR brute: ${nameResult.ocrConfidence}%`);
+      }
 
       debugData.rawText = nameResult.rawText;
       debugData.textLength = nameResult.rawText.length;
@@ -366,8 +379,10 @@ function App() {
                     <div className="debug-field">
                       <strong>Source OCR:</strong>
                       <span className={`source-badge ${debugInfo.ocrSource}`}>
-                        {debugInfo.ocrSource === 'enhanced-ocr' ? '🎯 OCR Amélioré' :
+                        {debugInfo.ocrSource === 'ocr-space' ? '🌐 OCR.space' :
+                         debugInfo.ocrSource === 'tesseract-fallback' ? '🔤 Tesseract (fallback)' :
                          debugInfo.ocrSource === 'google-vision' ? '🌐 Google Vision' :
+                         debugInfo.ocrSource === 'enhanced-ocr' ? '🎯 OCR Amélioré' :
                          '🔤 Tesseract.js'}
                       </span>
                     </div>
