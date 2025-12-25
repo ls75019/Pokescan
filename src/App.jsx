@@ -15,69 +15,62 @@ function App() {
   const [cameraActive, setCameraActive] = useState(false);
   const scanIntervalRef = useRef(null); // Pour le scan en temps réel
   const [isScanning, setIsScanning] = useState(false); // État du scan auto
+  const [videoReady, setVideoReady] = useState(false); // Vidéo démarrée ?
 
-  // Démarrer la caméra avec scan automatique
+  // Démarrer la caméra
   const startCamera = async () => {
     try {
-      console.log('📷 Démarrage de la caméra...');
+      console.log('📷 Demande accès caméra...');
 
       // Reset états
       setCard(null);
       setOcrResult(null);
       setError(null);
       setImage(null);
+      setVideoReady(false);
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment', // Caméra arrière sur mobile
+          facingMode: 'environment',
           width: { ideal: 1280 },
           height: { ideal: 720 }
         }
       });
 
-      console.log('✅ Stream caméra obtenu');
+      console.log('✅ Caméra autorisée, stream obtenu');
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-
-        // Activer la caméra immédiatement
         setCameraActive(true);
+        console.log('📹 Stream assigné à la vidéo');
 
-        // Forcer le play quand les métadonnées sont chargées
-        videoRef.current.onloadedmetadata = async () => {
-          console.log('📹 Métadonnées chargées, lancement vidéo...');
-          try {
-            await videoRef.current.play();
-            console.log('✅ Vidéo lancée');
-
-            // Démarrer le scan automatique après 1.5 secondes
-            setTimeout(() => {
-              if (videoRef.current && videoRef.current.readyState >= 2) {
-                console.log('🎬 Vidéo prête, démarrage scan auto');
-                startAutoScan();
-              }
-            }, 1500);
-          } catch (playErr) {
-            console.error('❌ Erreur play vidéo:', playErr);
-            setError('Erreur de lecture vidéo: ' + playErr.message);
-          }
-        };
-
-        // Forcer aussi le play directement (au cas où onloadedmetadata ne se déclenche pas)
-        setTimeout(async () => {
-          if (videoRef.current && videoRef.current.paused) {
-            console.log('⏯️ Tentative de play forcé...');
-            try {
-              await videoRef.current.play();
-            } catch (e) {
-              console.warn('Play automatique bloqué, attente interaction utilisateur');
-            }
-          }
-        }, 500);
+        // Sur iOS, il faut un geste utilisateur pour play()
+        // On affichera un bouton "Démarrer la vidéo"
       }
     } catch (err) {
       console.error('❌ Erreur caméra:', err);
       setError('Impossible d\'accéder à la caméra: ' + err.message);
+    }
+  };
+
+  // Démarrer la vidéo (appelé par bouton sur iOS)
+  const startVideo = async () => {
+    if (!videoRef.current) return;
+
+    try {
+      console.log('▶️ Tentative de démarrage vidéo...');
+      await videoRef.current.play();
+      console.log('✅ Vidéo démarrée !');
+      setVideoReady(true);
+
+      // Attendre 1 seconde puis démarrer le scan auto
+      setTimeout(() => {
+        console.log('🔄 Lancement du scan automatique');
+        startAutoScan();
+      }, 1000);
+    } catch (err) {
+      console.error('❌ Erreur play():', err);
+      setError('Erreur démarrage vidéo: ' + err.message);
     }
   };
 
@@ -111,8 +104,10 @@ function App() {
       const stream = videoRef.current.srcObject;
       stream.getTracks().forEach(track => track.stop());
       videoRef.current.srcObject = null;
-      setCameraActive(false);
     }
+
+    setCameraActive(false);
+    setVideoReady(false);
   };
 
   // Capturer et analyser (pour scan automatique)
@@ -304,30 +299,57 @@ function App() {
             <div className="camera-container">
               <video
                 ref={videoRef}
-                autoPlay
                 playsInline
+                playsinline
                 muted
-                webkit-playsinline="true"
                 className="camera-video"
-                style={{ transform: 'scaleX(1)' }}
               />
-              {/* Overlay guide de cadrage */}
-              <div className="card-guide-overlay">
-                <div className="card-guide">
-                  <div className="guide-corner guide-top-left"></div>
-                  <div className="guide-corner guide-top-right"></div>
-                  <div className="guide-corner guide-bottom-left"></div>
-                  <div className="guide-corner guide-bottom-right"></div>
-                  <div className="guide-text">
-                    {isScanning ? '🔍 Scan en cours...' : 'Cadrez votre carte'}
+
+              {/* Bouton démarrer vidéo (iOS) */}
+              {!videoReady && (
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.7)',
+                  zIndex: 10
+                }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={startVideo}
+                    style={{ fontSize: '1.2rem', padding: '20px 40px' }}
+                  >
+                    ▶️ Démarrer la vidéo
+                  </button>
+                </div>
+              )}
+
+              {/* Overlay guide de cadrage (seulement si vidéo démarrée) */}
+              {videoReady && (
+                <div className="card-guide-overlay">
+                  <div className="card-guide">
+                    <div className="guide-corner guide-top-left"></div>
+                    <div className="guide-corner guide-top-right"></div>
+                    <div className="guide-corner guide-bottom-left"></div>
+                    <div className="guide-corner guide-bottom-right"></div>
+                    <div className="guide-text">
+                      {isScanning ? '🔍 Scan en cours...' : 'Cadrez votre carte'}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
             <div className="camera-controls">
-              <button className="btn btn-primary" onClick={takePhoto} disabled={loading}>
-                📸 Capturer maintenant
-              </button>
+              {videoReady && (
+                <button className="btn btn-primary" onClick={takePhoto} disabled={loading}>
+                  📸 Capturer maintenant
+                </button>
+              )}
               <button className="btn btn-secondary" onClick={stopCamera}>
                 ❌ Annuler
               </button>
