@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
-import pokemon from 'pokemontcgsdk';
 import { recognizeCard } from './services/enhancedOcrService';
 import { detectAndCropCard } from './services/cardDetector';
 import { extractPotentialNames } from './services/fuzzyMatcher';
+import { searchCardByName, formatCard } from './services/tcgdexService';
 import './App.css';
 
 function App() {
@@ -120,77 +120,37 @@ function App() {
     }
   };
 
-  // Rechercher une carte
+  // Rechercher une carte avec TCGdex (API française)
   const searchCard = async (name, number = null) => {
     try {
-      console.log('🔎 Recherche pour:', { name, number });
+      console.log('🔎 Recherche TCGdex:', { name, number });
 
-      // Stratégie 1: Recherche exacte avec nom + numéro
-      if (number) {
-        const query = `name:"${name}" number:"${number}"`;
-        console.log('📡 Essai 1 - Query exacte:', query);
+      // Rechercher avec TCGdex (support français)
+      const card = await searchCardByName(name, number);
 
-        const result = await pokemon.card.where({
-          q: query,
-          pageSize: 1,
-          orderBy: '-set.releaseDate'
-        });
-
-        if (result.data && result.data.length > 0) {
-          console.log('✅ Carte trouvée (exacte)');
-          setCard(result.data[0]);
-          return;
-        }
+      if (card) {
+        console.log('✅ Carte trouvée:', card.name);
+        // Formater la carte pour l'affichage
+        const formattedCard = formatCard(card);
+        setCard(formattedCard);
+      } else {
+        console.log('❌ Aucune carte trouvée');
+        setError(`Aucune carte trouvée pour "${name}"${number ? ` (${number})` : ''}`);
       }
-
-      // Stratégie 2: Recherche partielle par nom (sans guillemets pour recherche floue)
-      const query2 = `name:${name}*`;
-      console.log('📡 Essai 2 - Query partielle:', query2);
-
-      let result = await pokemon.card.where({
-        q: query2,
-        pageSize: 5,
-        orderBy: '-set.releaseDate'
-      });
-
-      if (result.data && result.data.length > 0) {
-        console.log('✅ Carte trouvée (partielle):', result.data.length, 'résultats');
-        // Si on a un numéro, essayer de filtrer
-        if (number) {
-          const exactMatch = result.data.find(card => card.number === number);
-          if (exactMatch) {
-            setCard(exactMatch);
-            return;
-          }
-        }
-        // Sinon prendre la première
-        setCard(result.data[0]);
-        return;
-      }
-
-      // Stratégie 3: Recherche très large (sans wildcards)
-      const query3 = `name:${name}`;
-      console.log('📡 Essai 3 - Query large:', query3);
-
-      result = await pokemon.card.where({
-        q: query3,
-        pageSize: 5,
-        orderBy: '-set.releaseDate'
-      });
-
-      if (result.data && result.data.length > 0) {
-        console.log('✅ Carte trouvée (large)');
-        setCard(result.data[0]);
-        return;
-      }
-
-      // Aucun résultat
-      console.log('❌ Aucune carte trouvée');
-      setError(`Aucune carte trouvée pour "${name}"${number ? ` (${number})` : ''}`);
 
     } catch (err) {
-      console.error('❌ Erreur API:', err);
-      setError('Erreur lors de la recherche: ' + err.message);
+      console.error('❌ Erreur API TCGdex:', err);
+      console.error('❌ Message:', err.message);
+
+      // Message d'erreur convivial
+      let errorMsg = 'Erreur lors de la recherche: ';
+      if (err.message?.includes('fetch') || err.message?.includes('network')) {
+        errorMsg += 'Vérifiez votre connexion internet.';
+      } else {
+        errorMsg += err.message;
+      }
+
+      setError(errorMsg);
     }
   };
 
