@@ -1,5 +1,7 @@
 import { useState, useRef } from 'react';
+import pokemon from 'pokemontcgsdk';
 import { recognizeCard } from './services/enhancedOcrService';
+import { detectAndCropCard } from './services/cardDetector';
 import './App.css';
 
 function App() {
@@ -73,9 +75,17 @@ function App() {
     setCard(null);
 
     try {
-      // 1. OCR
+      // 1. Détecter et isoler la carte
+      console.log('🎴 Détection de la carte...');
+      const croppedImage = await detectAndCropCard(imageData);
+      console.log('✅ Carte détectée et isolée');
+
+      // Mettre à jour l'image affichée avec la carte isolée
+      setImage(croppedImage);
+
+      // 2. OCR
       console.log('🔍 Début analyse OCR...');
-      const result = await recognizeCard(imageData);
+      const result = await recognizeCard(croppedImage);
 
       const pokemonName = result.name.bestMatch?.text || null;
       const cardNumber = result.number.cardNumber || null;
@@ -115,23 +125,17 @@ function App() {
 
       console.log('📡 Query API:', query);
 
-      // Appel direct à l'API Pokemon TCG (pas de proxy)
-      const url = `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(query)}&pageSize=1&orderBy=-set.releaseDate`;
+      // Utiliser le SDK Pokemon TCG (évite CORS)
+      const result = await pokemon.card.where({
+        q: query,
+        pageSize: 1,
+        orderBy: '-set.releaseDate'
+      });
 
-      console.log('📡 URL:', url);
+      console.log('✅ Réponse API:', result);
 
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      console.log('✅ Réponse API:', data);
-
-      if (data.data && data.data.length > 0) {
-        setCard(data.data[0]);
+      if (result.data && result.data.length > 0) {
+        setCard(result.data[0]);
       } else {
         setError(`Aucune carte trouvée pour "${name}"${number ? ` (${number})` : ''}`);
       }
