@@ -475,9 +475,15 @@ function App() {
                         )}
                         {debugInfo.debugImages.threshold && (
                           <div className="debug-image-item">
-                            <h4>5️⃣ Binarisation (final)</h4>
+                            <h4>5️⃣ Binarisation</h4>
                             <img src={debugInfo.debugImages.threshold} alt="Threshold" />
-                            <p className="image-hint">Cette image est envoyée à Tesseract pour OCR</p>
+                          </div>
+                        )}
+                        {debugInfo.debugImages.inverted && (
+                          <div className="debug-image-item">
+                            <h4>6️⃣ Inversion (final)</h4>
+                            <img src={debugInfo.debugImages.inverted} alt="Inverted" />
+                            <p className="image-hint">✅ Cette image est envoyée à Tesseract (texte NOIR sur fond BLANC)</p>
                           </div>
                         )}
                       </div>

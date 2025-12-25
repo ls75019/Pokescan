@@ -320,7 +320,15 @@ export const preprocessForNameOCR = async (base64Image, options = {}) => {
     debugImages.threshold = canvas.toDataURL('image/png');
   }
 
-  // 8. Retourner en base64
+  // 8. Inverser les couleurs (Tesseract préfère texte NOIR sur fond BLANC)
+  canvas = invert(canvas);
+  console.log('🔄 [Preprocessor] Couleurs inversées (texte noir sur blanc)');
+
+  if (returnDebugImages) {
+    debugImages.inverted = canvas.toDataURL('image/png');
+  }
+
+  // 9. Retourner en base64
   const result = canvas.toDataURL('image/png');
   console.log('✅ [Preprocessor] Prétraitement terminé');
 
