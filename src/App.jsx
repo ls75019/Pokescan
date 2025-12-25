@@ -19,6 +19,8 @@ function App() {
   // Démarrer la caméra avec scan automatique
   const startCamera = async () => {
     try {
+      console.log('📷 Démarrage de la caméra...');
+
       // Reset états
       setCard(null);
       setOcrResult(null);
@@ -28,25 +30,53 @@ function App() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment', // Caméra arrière sur mobile
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         }
       });
 
+      console.log('✅ Stream caméra obtenu');
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+
+        // Activer la caméra immédiatement
         setCameraActive(true);
 
-        // Attendre que la vidéo soit prête
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current.play();
-          // Démarrer le scan automatique après 1 seconde
-          setTimeout(() => {
-            startAutoScan();
-          }, 1000);
+        // Forcer le play quand les métadonnées sont chargées
+        videoRef.current.onloadedmetadata = async () => {
+          console.log('📹 Métadonnées chargées, lancement vidéo...');
+          try {
+            await videoRef.current.play();
+            console.log('✅ Vidéo lancée');
+
+            // Démarrer le scan automatique après 1.5 secondes
+            setTimeout(() => {
+              if (videoRef.current && videoRef.current.readyState >= 2) {
+                console.log('🎬 Vidéo prête, démarrage scan auto');
+                startAutoScan();
+              }
+            }, 1500);
+          } catch (playErr) {
+            console.error('❌ Erreur play vidéo:', playErr);
+            setError('Erreur de lecture vidéo: ' + playErr.message);
+          }
         };
+
+        // Forcer aussi le play directement (au cas où onloadedmetadata ne se déclenche pas)
+        setTimeout(async () => {
+          if (videoRef.current && videoRef.current.paused) {
+            console.log('⏯️ Tentative de play forcé...');
+            try {
+              await videoRef.current.play();
+            } catch (e) {
+              console.warn('Play automatique bloqué, attente interaction utilisateur');
+            }
+          }
+        }, 500);
       }
     } catch (err) {
+      console.error('❌ Erreur caméra:', err);
       setError('Impossible d\'accéder à la caméra: ' + err.message);
     }
   };
@@ -276,7 +306,10 @@ function App() {
                 ref={videoRef}
                 autoPlay
                 playsInline
+                muted
+                webkit-playsinline="true"
                 className="camera-video"
+                style={{ transform: 'scaleX(1)' }}
               />
               {/* Overlay guide de cadrage */}
               <div className="card-guide-overlay">

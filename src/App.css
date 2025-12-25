@@ -118,13 +118,21 @@ body {
 .camera-container {
   position: relative;
   width: 100%;
+  min-height: 400px;
   background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .camera-video {
   width: 100%;
+  height: auto;
+  min-height: 400px;
+  max-height: 70vh;
   display: block;
   background: #000;
+  object-fit: cover;
 }
 
 /* Guide de cadrage overlay */
