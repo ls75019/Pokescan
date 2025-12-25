@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import pokemon from 'pokemontcgsdk';
 import { recognizeCard } from './services/enhancedOcrService';
 import { detectAndCropCard } from './services/cardDetector';
+import { extractPotentialNames } from './services/fuzzyMatcher';
 import './App.css';
 
 function App() {
@@ -95,13 +96,18 @@ function App() {
       setOcrResult({
         name: pokemonName,
         number: cardNumber,
-        confidence: result.name.bestMatch?.confidence || 0
+        confidence: result.name.bestMatch?.confidence || 0,
+        rawName: result.name.rawText, // Texte brut pour debug
+        rawNumber: result.number.rawText // Texte brut pour debug
       });
 
       // 2. Recherche de la carte
-      if (pokemonName) {
-        console.log('🔎 Recherche carte...');
-        await searchCard(pokemonName, cardNumber);
+      // Essayer d'abord avec le nom détecté, sinon avec le texte brut OCR
+      const searchName = pokemonName || extractPotentialNames(result.name.rawText)[0];
+
+      if (searchName) {
+        console.log('🔎 Recherche carte avec:', searchName);
+        await searchCard(searchName, cardNumber);
       } else {
         setError('Aucun nom de Pokémon détecté');
       }
@@ -117,28 +123,70 @@ function App() {
   // Rechercher une carte
   const searchCard = async (name, number = null) => {
     try {
-      // Construire la query
-      let query = `name:"${name}"`;
+      console.log('🔎 Recherche pour:', { name, number });
+
+      // Stratégie 1: Recherche exacte avec nom + numéro
       if (number) {
-        query += ` number:"${number}"`;
+        const query = `name:"${name}" number:"${number}"`;
+        console.log('📡 Essai 1 - Query exacte:', query);
+
+        const result = await pokemon.card.where({
+          q: query,
+          pageSize: 1,
+          orderBy: '-set.releaseDate'
+        });
+
+        if (result.data && result.data.length > 0) {
+          console.log('✅ Carte trouvée (exacte)');
+          setCard(result.data[0]);
+          return;
+        }
       }
 
-      console.log('📡 Query API:', query);
+      // Stratégie 2: Recherche partielle par nom (sans guillemets pour recherche floue)
+      const query2 = `name:${name}*`;
+      console.log('📡 Essai 2 - Query partielle:', query2);
 
-      // Utiliser le SDK Pokemon TCG (évite CORS)
-      const result = await pokemon.card.where({
-        q: query,
-        pageSize: 1,
+      let result = await pokemon.card.where({
+        q: query2,
+        pageSize: 5,
         orderBy: '-set.releaseDate'
       });
 
-      console.log('✅ Réponse API:', result);
+      if (result.data && result.data.length > 0) {
+        console.log('✅ Carte trouvée (partielle):', result.data.length, 'résultats');
+        // Si on a un numéro, essayer de filtrer
+        if (number) {
+          const exactMatch = result.data.find(card => card.number === number);
+          if (exactMatch) {
+            setCard(exactMatch);
+            return;
+          }
+        }
+        // Sinon prendre la première
+        setCard(result.data[0]);
+        return;
+      }
+
+      // Stratégie 3: Recherche très large (sans wildcards)
+      const query3 = `name:${name}`;
+      console.log('📡 Essai 3 - Query large:', query3);
+
+      result = await pokemon.card.where({
+        q: query3,
+        pageSize: 5,
+        orderBy: '-set.releaseDate'
+      });
 
       if (result.data && result.data.length > 0) {
+        console.log('✅ Carte trouvée (large)');
         setCard(result.data[0]);
-      } else {
-        setError(`Aucune carte trouvée pour "${name}"${number ? ` (${number})` : ''}`);
+        return;
       }
+
+      // Aucun résultat
+      console.log('❌ Aucune carte trouvée');
+      setError(`Aucune carte trouvée pour "${name}"${number ? ` (${number})` : ''}`);
 
     } catch (err) {
       console.error('❌ Erreur API:', err);
@@ -225,6 +273,13 @@ function App() {
             <p><strong>Nom:</strong> {ocrResult.name || '❌ Non détecté'}</p>
             <p><strong>Numéro:</strong> {ocrResult.number || '❌ Non détecté'}</p>
             <p><strong>Confiance:</strong> {ocrResult.confidence}%</p>
+            {ocrResult.rawName && (
+              <details style={{ marginTop: '10px', fontSize: '0.9em', color: '#666' }}>
+                <summary>Debug OCR</summary>
+                <p><strong>Texte brut nom:</strong> {ocrResult.rawName}</p>
+                <p><strong>Texte brut numéro:</strong> {ocrResult.rawNumber}</p>
+              </details>
+            )}
           </div>
         )}
 
