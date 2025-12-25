@@ -175,38 +175,65 @@ export const recognizeCardNumber = async (imageBase64, onProgress = null) => {
   // 1. Prétraiter l'image pour extraire la zone du numéro
   const preprocessedImage = await preprocessForNumberOCR(imageBase64);
 
-  if (onProgress) onProgress({ status: 'Analyse OCR du numéro...', progress: 30 });
+  if (onProgress) onProgress({ status: 'Analyse OCR du numéro avec OCR.space...', progress: 30 });
 
-  // 2. Utiliser Tesseract avec paramètres pour numéros
-  const worker = await Tesseract.createWorker('eng', 1, {
-    logger: (m) => {
-      if (m.status === 'recognizing text' && onProgress) {
-        const progress = 30 + Math.floor(m.progress * 60);
-        onProgress({ status: 'Reconnaissance du numéro...', progress });
+  // 2. Essayer OCR.space d'abord, puis Tesseract en fallback
+  let ocrResult;
+  let ocrSource = 'ocr-space';
+
+  try {
+    console.log('🌐 [Enhanced OCR] Tentative OCR.space pour le numéro...');
+    ocrResult = await recognizePreprocessedImage(preprocessedImage);
+    console.log('✅ [Enhanced OCR] OCR.space numéro réussi!');
+    if (onProgress) onProgress({ status: 'OCR.space terminé', progress: 70 });
+  } catch (error) {
+    console.warn('⚠️ [Enhanced OCR] OCR.space numéro échoué, fallback vers Tesseract...');
+    console.warn('⚠️ [Enhanced OCR] Raison:', error.message);
+
+    // Fallback vers Tesseract
+    if (onProgress) onProgress({ status: 'Fallback vers Tesseract...', progress: 40 });
+
+    const worker = await Tesseract.createWorker('eng', 1, {
+      logger: (m) => {
+        if (m.status === 'recognizing text' && onProgress) {
+          const progress = 40 + Math.floor(m.progress * 30);
+          onProgress({ status: 'Reconnaissance du numéro (Tesseract)...', progress });
+        }
       }
-    }
-  });
+    });
 
-  await worker.setParameters({
-    tessedit_char_whitelist: '0123456789/',
-    tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-  });
+    await worker.setParameters({
+      tessedit_char_whitelist: '0123456789/',
+      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+    });
 
-  const { data } = await worker.recognize(preprocessedImage);
-  await worker.terminate();
+    const { data } = await worker.recognize(preprocessedImage);
+    await worker.terminate();
 
-  console.log('📝 [Enhanced OCR] Texte numéro brut:', data.text);
+    ocrResult = {
+      text: data.text,
+      confidence: data.confidence,
+      source: 'tesseract-fallback'
+    };
+    ocrSource = 'tesseract-fallback';
+
+    if (onProgress) onProgress({ status: 'Tesseract terminé', progress: 70 });
+  }
+
+  console.log('📝 [Enhanced OCR] Texte numéro brut:', ocrResult.text);
+  console.log('📊 [Enhanced OCR] Source numéro:', ocrSource);
 
   // 3. Extraire le numéro
-  const cardNumber = extractCardNumber(data.text);
+  const cardNumber = extractCardNumber(ocrResult.text);
   console.log('🔢 [Enhanced OCR] Numéro extrait:', cardNumber);
 
   if (onProgress) onProgress({ status: 'Terminé!', progress: 100 });
 
   return {
-    rawText: data.text,
+    rawText: ocrResult.text,
     cardNumber,
-    confidence: data.confidence
+    confidence: ocrResult.confidence,
+    ocrSource
   };
 };
 

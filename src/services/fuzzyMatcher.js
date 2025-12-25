@@ -124,20 +124,64 @@ export const findTopMatches = (ocrText, candidates, topN = 5, minSimilarity = 0.
  * Format typique : "123/456" ou "123" ou "SV123"
  */
 export const extractCardNumber = (text) => {
-  // Chercher des patterns de numéros de carte
+  if (!text) return null;
+
+  // Nettoyer le texte (enlever espaces multiples, newlines, etc.)
+  const cleaned = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  console.log('🔍 [Fuzzy Matcher] Recherche de numéro dans:', cleaned);
+
+  // Chercher des patterns de numéros de carte (ordre de priorité)
   const patterns = [
-    /(\d{1,4})\s*\/\s*(\d{1,4})/,  // Format "123/456"
-    /([A-Z]{1,3}\d{1,4})/,          // Format "SV123"
-    /(\d{3,4})/                      // Juste un numéro
+    // Format standard avec slash : "186/195", "123 / 456"
+    {
+      regex: /(\d{1,4})\s*\/\s*(\d{1,4})/,
+      priority: 1,
+      format: (m) => `${m[1]}/${m[2]}`
+    },
+    // Format avec préfixe lettre : "SV123/195", "SWSH123"
+    {
+      regex: /([A-Z]{1,4})\s*(\d{1,4})\s*\/\s*(\d{1,4})/,
+      priority: 2,
+      format: (m) => `${m[1]}${m[2]}/${m[3]}`
+    },
+    // Format simple avec préfixe : "SV123", "SWSH123"
+    {
+      regex: /([A-Z]{2,4})(\d{1,4})/,
+      priority: 3,
+      format: (m) => `${m[1]}${m[2]}`
+    },
+    // Juste un numéro (3-4 chiffres)
+    {
+      regex: /(\d{3,4})/,
+      priority: 4,
+      format: (m) => m[1]
+    }
   ];
 
+  // Trier par priorité et essayer chaque pattern
+  const results = [];
   for (const pattern of patterns) {
-    const match = text.match(pattern);
+    const match = cleaned.match(pattern.regex);
     if (match) {
-      return match[1] + (match[2] ? `/${match[2]}` : '');
+      const number = pattern.format(match);
+      results.push({
+        number,
+        priority: pattern.priority,
+        match: match[0]
+      });
     }
   }
 
+  // Retourner le meilleur match (plus haute priorité)
+  if (results.length > 0) {
+    results.sort((a, b) => a.priority - b.priority);
+    const best = results[0];
+    console.log('✅ [Fuzzy Matcher] Numéro trouvé:', best.number, '(pattern:', best.match, ')');
+    return best.number;
+  }
+
+  console.log('❌ [Fuzzy Matcher] Aucun numéro trouvé');
   return null;
 };
 

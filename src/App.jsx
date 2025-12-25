@@ -20,26 +20,47 @@ function App() {
   const [debugInfo, setDebugInfo] = useState(null);
   const [errorInfo, setErrorInfo] = useState(null);
 
-  const searchCardsByName = async (searchTerm) => {
+  const searchCardsByName = async (searchTerm, cardNumber = null) => {
     setLoading(true);
     setCards([]);
 
     try {
-      // Recherche par nom avec l'API Pokemon TCG
-      const result = await pokemon.card.where({
-        q: `name:"${searchTerm}*"`,
-        pageSize: 20,
-        orderBy: '-set.releaseDate'
-      });
+      // Construire la requête de recherche
+      let query = `name:"${searchTerm}*"`;
 
-      setCards(result.data);
+      // Ajouter le numéro de carte si disponible
+      if (cardNumber) {
+        query += ` number:${cardNumber}`;
+        console.log('🔍 [App] Recherche avec numéro:', cardNumber);
+      }
 
-      if (result.data.length === 0) {
-        alert(`Aucune carte trouvée pour "${searchTerm}"`);
+      console.log('🔍 [App] Requête:', query);
+
+      // Utiliser la fonction Netlify proxy au lieu de l'API directe
+      const response = await fetch(`/.netlify/functions/pokemon-api?endpoint=cards&q=${encodeURIComponent(query)}&pageSize=20&orderBy=-set.releaseDate`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setCards(result.data || []);
+
+      if (!result.data || result.data.length === 0) {
+        console.warn('⚠️ [App] Aucune carte trouvée');
+        setErrorInfo({
+          type: 'NO_RESULTS',
+          message: `Aucune carte trouvée pour "${searchTerm}"${cardNumber ? ` (numéro: ${cardNumber})` : ''}`,
+          suggestion: 'Essayez avec un autre nom ou vérifiez l\'orthographe'
+        });
       }
     } catch (error) {
-      console.error('Erreur lors de la recherche:', error);
-      alert('Erreur lors de la recherche. Veuillez réessayer.');
+      console.error('❌ [App] Erreur lors de la recherche:', error);
+      setErrorInfo({
+        type: 'SEARCH_ERROR',
+        message: error.message,
+        suggestion: 'Vérifiez votre connexion internet et réessayez'
+      });
     } finally {
       setLoading(false);
     }
@@ -153,11 +174,17 @@ function App() {
       // Chercher la carte avec le meilleur match
       const searchName = nameResult.bestMatch.text;
       const confidence = nameResult.bestMatch.confidence;
+      const cardNumber = numberResult.cardNumber;
 
-      debugData.steps.push(`🔎 Recherche automatique de: "${searchName}" (confiance: ${confidence}%)`);
+      if (cardNumber) {
+        debugData.steps.push(`🔎 Recherche automatique de: "${searchName}" + numéro: ${cardNumber} (confiance: ${confidence}%)`);
+      } else {
+        debugData.steps.push(`🔎 Recherche automatique de: "${searchName}" (confiance: ${confidence}%)`);
+      }
+
       setDebugInfo(debugData);
 
-      await searchByWord(searchName);
+      await searchCardsByName(searchName, cardNumber);
 
     } catch (error) {
       console.error('Erreur OCR:', error);

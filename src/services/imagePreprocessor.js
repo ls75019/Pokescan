@@ -51,22 +51,25 @@ export const extractNameRegion = (canvas) => {
 };
 
 /**
- * Extraire la zone du numéro de carte (généralement bas à gauche)
+ * Extraire la zone du numéro de carte (bas centre de la carte)
+ * Format typique : "186/195" ou "SV123"
  */
 export const extractNumberRegion = (canvas) => {
   const numberCanvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
 
-  // Zone du numéro : 20% de hauteur en bas, 50% de largeur à gauche
-  const width = Math.floor(canvas.width * 0.5);
-  const height = Math.floor(canvas.height * 0.2);
-  const startY = canvas.height - height;
+  // Zone du numéro : 8% de hauteur en bas, 60% de largeur au centre
+  const fullWidth = canvas.width;
+  const startX = Math.floor(fullWidth * 0.2);  // Commencer à 20% du bord gauche
+  const width = Math.floor(fullWidth * 0.6);    // Prendre 60% de la largeur (centré)
+  const height = Math.floor(canvas.height * 0.08); // Prendre 8% de hauteur
+  const startY = canvas.height - Math.floor(canvas.height * 0.09); // 9% du bas
 
   numberCanvas.width = width;
   numberCanvas.height = height;
 
   const numberCtx = numberCanvas.getContext('2d');
-  numberCtx.drawImage(canvas, 0, startY, width, height, 0, 0, width, height);
+  numberCtx.drawImage(canvas, startX, startY, width, height, 0, 0, width, height);
 
   return numberCanvas;
 };
