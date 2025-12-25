@@ -6,8 +6,8 @@
 
 const EBAY_FINDING_API = 'https://svcs.ebay.com/services/search/FindingService/v1';
 
-// App ID eBay (à configurer dans les variables d'environnement)
-const EBAY_APP_ID = import.meta.env.VITE_EBAY_APP_ID || 'Validlkk-Pokescan-SBX-fe0563e1b-b8663828';
+// App ID eBay (Sandbox pour tests)
+const EBAY_APP_ID = 'Validlkk-Pokescan-SBX-fe0563e1b-b8663828';
 
 /**
  * Rechercher les ventes terminées sur eBay
@@ -53,10 +53,21 @@ export const searchSoldListings = async (cardName, cardNumber = null) => {
 
     const data = await response.json();
 
-    console.log('📦 [eBay] Réponse brute:', data);
+    console.log('📦 [eBay] Réponse brute complète:', JSON.stringify(data, null, 2));
+
+    // Vérifier s'il y a des erreurs
+    const ack = data.findCompletedItemsResponse?.[0]?.ack?.[0];
+    if (ack === 'Failure' || ack === 'PartialFailure') {
+      const errorMessage = data.findCompletedItemsResponse?.[0]?.errorMessage?.[0]?.error?.[0]?.message?.[0];
+      console.error('❌ [eBay] Erreur API:', errorMessage);
+      throw new Error(`eBay API error: ${errorMessage}`);
+    }
 
     // Parser la réponse eBay
     const searchResult = data.findCompletedItemsResponse?.[0]?.searchResult?.[0];
+
+    console.log('📊 [eBay] SearchResult:', searchResult);
+    console.log('📊 [eBay] Count:', searchResult?.['@count']);
 
     if (!searchResult || searchResult['@count'] === '0') {
       console.log('⚠️ [eBay] Aucune vente trouvée');
