@@ -3,7 +3,7 @@ import pokemon from 'pokemontcgsdk';
 import ImageUpload from './components/ImageUpload';
 import CardSearch from './components/CardSearch';
 import CardDisplay from './components/CardDisplay';
-import { recognizeText, extractPokemonNames, extractAllWords } from './services/ocrService';
+import { recognizeCard } from './services/enhancedOcrService';
 import './App.css';
 
 // Configuration de l'API (vous pouvez ajouter votre clé API ici si vous en avez une)
@@ -67,77 +67,74 @@ function App() {
         steps: []
       };
 
-      debugData.steps.push('🚀 Début de la reconnaissance OCR');
+      debugData.steps.push('🚀 Début de la reconnaissance OCR améliorée');
 
-      // Utiliser le service OCR (Tesseract.js par défaut, Google Vision si configuré)
-      const result = await recognizeText(imageFile, {
-        preferGoogleVision: true, // Utiliser Google Vision si configuré, sinon fallback vers Tesseract
-        onProgress: (progress) => {
-          setOcrProgress(progress);
-        }
+      // Convertir le fichier en base64
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(imageFile);
       });
 
-      const text = result.text.trim();
-      setDetectedText(text);
+      // Utiliser le service OCR amélioré
+      const result = await recognizeCard(base64, (progress) => {
+        setOcrProgress(progress);
+      });
 
-      debugData.ocrSource = result.source || 'unknown';
-      debugData.rawText = text;
-      debugData.textLength = text.length;
-      debugData.steps.push(`📊 Source OCR: ${result.source || 'unknown'}`);
+      console.log('📊 [App] Résultat OCR complet:', result);
 
-      // Capturer l'erreur Google Vision s'il y en a une
-      if (result.googleVisionError) {
-        debugData.googleVisionError = result.googleVisionError;
-        debugData.steps.push(`⚠️ Google Vision a échoué: ${result.googleVisionError.message}`);
-        debugData.steps.push(`🔄 Basculement vers Tesseract.js`);
-      debugData.steps.push(`📝 Longueur du texte: ${text.length} caractères`);
+      debugData.ocrSource = 'enhanced-ocr';
+      debugData.steps.push('📊 Source OCR: Tesseract.js amélioré avec prétraitement');
 
-      console.log('🔍 Texte détecté (brut):', text);
-      console.log('📊 Source OCR:', result.source || 'unknown');
+      // Résultat du nom
+      const nameResult = result.name;
+      setDetectedText(nameResult.rawText);
 
-      if (!text) {
-        debugData.steps.push('❌ Aucun texte détecté');
+      debugData.rawText = nameResult.rawText;
+      debugData.textLength = nameResult.rawText.length;
+      debugData.potentialNames = nameResult.potentialNames;
+      debugData.steps.push(`📝 Texte zone nom: "${nameResult.rawText}"`);
+      debugData.steps.push(`🔍 Mots extraits: ${nameResult.potentialNames.join(', ')}`);
+
+      // Résultat du numéro
+      const numberResult = result.number;
+      if (numberResult.cardNumber) {
+        debugData.cardNumber = numberResult.cardNumber;
+        debugData.steps.push(`🔢 Numéro détecté: ${numberResult.cardNumber}`);
+      }
+
+      // Meilleurs matches
+      const bestMatches = nameResult.bestMatches || [];
+      setDetectedWords(bestMatches.map(m => m.text));
+
+      debugData.bestMatchesCount = bestMatches.length;
+      debugData.bestMatches = bestMatches;
+
+      if (bestMatches.length > 0) {
+        const topMatches = bestMatches.slice(0, 5).map(m => `${m.text} (${m.confidence}%)`).join(', ');
+        debugData.steps.push(`🎯 Top 5 correspondances: ${topMatches}`);
+      }
+
+      console.log('🎯 Meilleurs matches:', bestMatches);
+
+      if (!nameResult.bestMatch) {
+        debugData.steps.push('❌ Aucun nom de Pokémon correspondant trouvé');
         setDebugInfo(debugData);
         setErrorInfo({
-          type: 'NO_TEXT',
-          message: 'Aucun texte détecté sur l\'image',
-          suggestion: 'Essayez avec une image plus claire ou utilisez le mode recherche'
+          type: 'NO_MATCH',
+          message: 'Aucun nom de Pokémon reconnu avec suffisamment de confiance',
+          suggestion: 'Essayez avec une image plus claire ou utilisez le mode recherche manuelle'
         });
         setOcrProgress(null);
         setLoading(false);
         return;
       }
 
-      // Extraire TOUS les mots pour affichage et sélection
-      const allWords = extractAllWords(text);
-      setDetectedWords(allWords);
+      // Chercher la carte avec le meilleur match
+      const searchName = nameResult.bestMatch.text;
+      const confidence = nameResult.bestMatch.confidence;
 
-      debugData.allWordsCount = allWords.length;
-      debugData.allWords = allWords;
-      debugData.steps.push(`📋 ${allWords.length} mots extraits au total`);
-
-      console.log('📝 Tous les mots extraits:', allWords);
-
-      // Extraire les noms de Pokémon possibles (mots filtrés)
-      const pokemonNames = extractPokemonNames(text);
-
-      debugData.pokemonNamesCount = pokemonNames.length;
-      debugData.pokemonNames = pokemonNames;
-      debugData.steps.push(`🎯 ${pokemonNames.length} noms Pokémon suggérés: ${pokemonNames.slice(0, 5).join(', ')}`);
-
-      console.log('🎯 Noms Pokémon suggérés:', pokemonNames);
-
-      if (pokemonNames.length === 0) {
-        debugData.steps.push('⚠️ Aucun nom de Pokémon identifié automatiquement');
-        setDebugInfo(debugData);
-        setOcrProgress(null);
-        setLoading(false);
-        return;
-      }
-
-      // Chercher le premier nom de Pokémon trouvé
-      const searchName = pokemonNames[0];
-      debugData.steps.push(`🔎 Recherche automatique de: "${searchName}"`);
+      debugData.steps.push(`🔎 Recherche automatique de: "${searchName}" (confiance: ${confidence}%)`);
       setDebugInfo(debugData);
 
       await searchByWord(searchName);
@@ -362,7 +359,9 @@ function App() {
                     <div className="debug-field">
                       <strong>Source OCR:</strong>
                       <span className={`source-badge ${debugInfo.ocrSource}`}>
-                        {debugInfo.ocrSource === 'google-vision' ? '🌐 Google Vision' : '🔤 Tesseract.js'}
+                        {debugInfo.ocrSource === 'enhanced-ocr' ? '🎯 OCR Amélioré' :
+                         debugInfo.ocrSource === 'google-vision' ? '🌐 Google Vision' :
+                         '🔤 Tesseract.js'}
                       </span>
                     </div>
                   )}
@@ -408,9 +407,28 @@ function App() {
                       </ul>
                     </div>
                   )}
+                  {debugInfo.bestMatches && debugInfo.bestMatches.length > 0 && (
+                    <details className="debug-details" open>
+                      <summary>🎯 Top correspondances ({debugInfo.bestMatches.length})</summary>
+                      <div className="matches-list">
+                        {debugInfo.bestMatches.slice(0, 10).map((match, idx) => (
+                          <div key={idx} className="match-item">
+                            <span className="match-name">{match.text}</span>
+                            <span className="match-confidence">{match.confidence}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                  {debugInfo.potentialNames && debugInfo.potentialNames.length > 0 && (
+                    <details className="debug-details">
+                      <summary>📝 Mots bruts extraits</summary>
+                      <pre>{debugInfo.potentialNames.join(', ')}</pre>
+                    </details>
+                  )}
                   {debugInfo.pokemonNames && debugInfo.pokemonNames.length > 0 && (
                     <details className="debug-details">
-                      <summary>🎯 Noms Pokémon suggérés</summary>
+                      <summary>🎯 Noms Pokémon suggérés (ancien)</summary>
                       <pre>{debugInfo.pokemonNames.join(', ')}</pre>
                     </details>
                   )}

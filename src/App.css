@@ -719,6 +719,43 @@ body {
   border: 1px solid var(--primary-color);
 }
 
+.source-badge.enhanced-ocr {
+  background: rgba(167, 139, 250, 0.3);
+  color: #c4b5fd;
+  border: 1px solid #a78bfa;
+}
+
+.matches-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.match-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  border-left: 3px solid var(--secondary-color);
+}
+
+.match-name {
+  color: var(--text-light);
+  font-weight: 500;
+}
+
+.match-confidence {
+  color: var(--secondary-color);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 2px 8px;
+  background: rgba(78, 205, 196, 0.2);
+  border-radius: 12px;
+}
+
 .debug-steps {
   margin-top: 15px;
 }
