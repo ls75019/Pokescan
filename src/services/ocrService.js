@@ -117,6 +117,8 @@ export const recognizeText = async (imageSource, options = {}) => {
     imageBase64 = imageSource;
   }
 
+  let googleVisionError = null;
+
   // Essayer Google Vision en premier si demandé
   if (preferGoogleVision) {
     console.log('🎯 [OCR Service] Google Vision demandé, tentative...');
@@ -129,6 +131,11 @@ export const recognizeText = async (imageSource, options = {}) => {
     } catch (error) {
       console.warn('⚠️ [OCR Service] Google Vision échoué, basculement vers Tesseract.js');
       console.warn('⚠️ [OCR Service] Raison:', error.message);
+      googleVisionError = {
+        message: error.message,
+        type: error.name || 'Error',
+        stack: error.stack
+      };
       // Continuer avec Tesseract
     }
   }
@@ -144,7 +151,11 @@ export const recognizeText = async (imageSource, options = {}) => {
     });
 
     if (onProgress) onProgress({ status: 'Complete', progress: 100 });
-    return { ...result, source: 'tesseract' };
+    return {
+      ...result,
+      source: 'tesseract',
+      googleVisionError // Inclure l'erreur Google Vision s'il y en a une
+    };
   } catch (error) {
     throw new Error(`OCR failed: ${error.message}`);
   }

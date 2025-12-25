@@ -670,6 +670,36 @@ body {
   min-width: 180px;
 }
 
+.debug-field.warning {
+  background: rgba(255, 193, 7, 0.15);
+  border: 2px solid rgba(255, 193, 7, 0.4);
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.debug-field.warning strong {
+  color: #ffeb3b;
+}
+
+.debug-field .error-message {
+  margin-top: 8px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  color: #ffccbc;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  width: 100%;
+  word-break: break-word;
+}
+
+.debug-field .error-hint {
+  margin-top: 8px;
+  color: #fff9c4;
+  font-style: italic;
+  font-size: 0.95rem;
+}
+
 .source-badge {
   padding: 6px 12px;
   border-radius: 20px;

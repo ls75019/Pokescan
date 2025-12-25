@@ -84,6 +84,12 @@ function App() {
       debugData.rawText = text;
       debugData.textLength = text.length;
       debugData.steps.push(`📊 Source OCR: ${result.source || 'unknown'}`);
+
+      // Capturer l'erreur Google Vision s'il y en a une
+      if (result.googleVisionError) {
+        debugData.googleVisionError = result.googleVisionError;
+        debugData.steps.push(`⚠️ Google Vision a échoué: ${result.googleVisionError.message}`);
+        debugData.steps.push(`🔄 Basculement vers Tesseract.js`);
       debugData.steps.push(`📝 Longueur du texte: ${text.length} caractères`);
 
       console.log('🔍 Texte détecté (brut):', text);
@@ -358,6 +364,13 @@ function App() {
                       <span className={`source-badge ${debugInfo.ocrSource}`}>
                         {debugInfo.ocrSource === 'google-vision' ? '🌐 Google Vision' : '🔤 Tesseract.js'}
                       </span>
+                    </div>
+                  )}
+                  {debugInfo.googleVisionError && (
+                    <div className="debug-field warning">
+                      <strong>⚠️ Erreur Google Vision:</strong>
+                      <div className="error-message">{debugInfo.googleVisionError.message}</div>
+                      <div className="error-hint">→ L'application a basculé vers Tesseract.js</div>
                     </div>
                   )}
                   {debugInfo.textLength !== undefined && (
