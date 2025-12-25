@@ -3,7 +3,7 @@ import { recognizeCard } from './services/enhancedOcrService';
 import { detectAndCropCard } from './services/cardDetector';
 import { extractPotentialNames } from './services/fuzzyMatcher';
 import { searchCardByName, formatCard } from './services/tcgdexService';
-import { searchSoldListings, formatPrice, formatDate } from './services/ebayService';
+import { searchSoldListingsBuyAPI, formatPrice, formatDate } from './services/ebayBuyService';
 import './App.css';
 
 function App() {
@@ -239,11 +239,11 @@ function App() {
     setEbaySales(null);
 
     try {
-      console.log('🛒 Recherche ventes eBay...');
-      const sales = await searchSoldListings(cardName, cardNumber);
+      console.log('🛒 Recherche annonces eBay...');
+      const sales = await searchSoldListingsBuyAPI(cardName, cardNumber);
 
       if (sales.success) {
-        console.log(`✅ ${sales.count} ventes eBay trouvées`);
+        console.log(`✅ ${sales.count} annonces eBay trouvées`);
         setEbaySales(sales);
       } else {
         console.log('⚠️ Erreur recherche eBay:', sales.error);
@@ -451,12 +451,12 @@ function App() {
 
             {/* Ventes eBay */}
             <div className="ebay-sales" style={{ marginTop: '30px' }}>
-              <h3>💰 Ventes eBay (90 derniers jours)</h3>
+              <h3>💰 Annonces eBay France</h3>
 
               {loadingEbay && (
                 <div style={{ textAlign: 'center', padding: '20px' }}>
                   <div className="spinner"></div>
-                  <p>Chargement des ventes...</p>
+                  <p>Recherche sur eBay...</p>
                 </div>
               )}
 
@@ -469,7 +469,7 @@ function App() {
                     borderRadius: '8px',
                     marginBottom: '20px'
                   }}>
-                    <h4 style={{ marginBottom: '10px' }}>📊 Statistiques ({ebaySales.statistics.count} ventes)</h4>
+                    <h4 style={{ marginBottom: '10px' }}>📊 Statistiques ({ebaySales.statistics.count} annonces)</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                       <p><strong>Prix min:</strong> {formatPrice(ebaySales.statistics.min)}</p>
                       <p><strong>Prix max:</strong> {formatPrice(ebaySales.statistics.max)}</p>
@@ -478,8 +478,8 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Liste des ventes récentes */}
-                  <h4 style={{ marginBottom: '10px' }}>🕐 Ventes récentes</h4>
+                  {/* Liste des annonces */}
+                  <h4 style={{ marginBottom: '10px' }}>📋 Annonces actuelles</h4>
                   <div className="sales-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     {ebaySales.items.slice(0, 10).map((item, index) => (
                       <div key={index} className="sale-item" style={{
@@ -505,7 +505,7 @@ function App() {
                               {item.title.substring(0, 60)}...
                             </p>
                             <p style={{ fontSize: '0.75em', color: '#999' }}>
-                              {formatDate(item.soldDate)} • {item.condition}
+                              {item.condition} • Vendeur: {item.seller || 'N/A'}
                             </p>
                             <a
                               href={item.url}
@@ -525,7 +525,7 @@ function App() {
 
               {!loadingEbay && ebaySales && ebaySales.count === 0 && (
                 <p style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
-                  Aucune vente récente trouvée pour cette carte
+                  Aucune annonce trouvée pour cette carte sur eBay France
                 </p>
               )}
             </div>
