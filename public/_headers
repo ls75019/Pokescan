@@ -1,0 +1,13 @@
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=*, microphone=()
+
+# Cache des assets statiques
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Pas de cache pour HTML
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
