@@ -1,0 +1,10 @@
+name = "ebay-scraper"
+main = "ebay-scraper.js"
+compatibility_date = "2024-01-01"
+
+# Workers gratuit: 100,000 requêtes/jour
+# https://dash.cloudflare.com/
+
+[env.production]
+name = "ebay-scraper"
+route = ""
